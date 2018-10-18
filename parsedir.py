@@ -7,7 +7,7 @@ data = []
 
 for filename in files:
     with open(path+filename) as inputFile:
-        with open('./data/'+filename, 'w') as outputFile:
+        with open('./data/'+filename+".txt", 'w') as outputFile:
             for line in inputFile:
                 if line.find('"body":"'):
                     outputFile.write(line[68:].split(',"created_at"')[0]+'\n')

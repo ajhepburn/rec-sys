@@ -1,3 +1,6 @@
 models/
 data/
 .vscode
+__pycache__
+model.bin
+model_sm.bin
