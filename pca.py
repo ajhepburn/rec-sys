@@ -2,7 +2,9 @@ from gensim.models import Word2Vec
 from sklearn.decomposition import PCA
 from matplotlib import pyplot
 
-model = Word2Vec.load('model.bin')
+model_path = ('./models/')
+
+model = Word2Vec.load(model_path+'model.bin')
 # fit a 2d PCA model to the vectors
 X = model[model.wv.vocab]
 pca = PCA(n_components=2)

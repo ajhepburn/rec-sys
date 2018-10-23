@@ -1,7 +1,7 @@
 from os import listdir
 from os.path import isfile, join
 import time
-from datetime import timedelta
+from datetime import timedelta, datetime
 import spacy
 
 nlp = spacy.load('en')
@@ -11,6 +11,7 @@ def tokens():
     store = []
     files = [f for f in listdir(path) if isfile(join(path, f))]
 
+    print("Tokenization began:", str(datetime.now()))
     start_time = time.monotonic()
 #    for filename in nlp.pipe(files, batch_size=10000, n_threads=3):
     for filename in files:
@@ -22,6 +23,6 @@ def tokens():
                 if len(tokens) != 0: store.append(tokens)
 
     end_time = time.monotonic()
-    print("Time taken to tokenize:",timedelta(seconds=end_time - start_time))
+    print("Tokenization Ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=end_time - start_time))
 
     return store
