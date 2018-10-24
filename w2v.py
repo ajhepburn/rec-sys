@@ -9,7 +9,7 @@ sentences = tokens()
 # train model
 print("Training began:", str(datetime.now()))
 start_time = time.monotonic()
-model = Word2Vec(sentences, min_count=25, size=300)
+model = Word2Vec(sentences, min_count=25, size=200, sg=1)
 end_time = time.monotonic()
 print("Training ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=end_time - start_time))
 

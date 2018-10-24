@@ -3,11 +3,12 @@ import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 from gensim.models import Word2Vec
 
-model = Word2Vec.load('model.bin')
+model_path = './models/'
+model = Word2Vec.load(model_path+'model.bin')
 
 def display_closestwords_tsnescatterplot(model, word):
     
-    arr = np.empty((0,300), dtype='f')
+    arr = np.empty((0,200), dtype='f')
     word_labels = [word]
 
     # get close words
@@ -36,4 +37,4 @@ def display_closestwords_tsnescatterplot(model, word):
     plt.ylim(y_coords.min()+0.00005, y_coords.max()+0.00005)
     plt.show()
 
-display_closestwords_tsnescatterplot(model, 'good')
+display_closestwords_tsnescatterplot(model, 'dog')

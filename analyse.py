@@ -5,7 +5,5 @@ model_path = ('./models/')
 model = Word2Vec.load(model_path+'model.bin')
 words = list(model.wv.vocab)
 
-count = 0
-for word in words:
-    if len(word) < 3:
-        print(word)
+for word, vocab_obj in model.wv.vocab.items():
+    print(str(word) + str(vocab_obj.count))

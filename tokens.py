@@ -19,7 +19,7 @@ def tokens():
             #head = [next(f) for x in range(5)]
             for line in f:
                 tokens = nlp(line.lower(), disable=['parser', 'tagger', 'ner'])
-                tokens = [token.lemma_ for token in tokens if not token.orth_.isspace() and token.is_alpha and not token.is_stop and token.lemma_ != '-PRON-' and len(token.orth_) != 1]
+                tokens = [token.lemma_ for token in tokens if not token.orth_.isspace() and token.is_alpha and not token.is_stop and token.lemma_ != '-PRON-' and len(token.orth_) >= 3 and token.text in nlp.vocab]
                 if len(tokens) != 0: store.append(tokens)
 
     end_time = time.monotonic()
