@@ -26,3 +26,5 @@ def tokens():
     print("Tokenization Ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=end_time - start_time))
 
     return store
+
+tokens()
