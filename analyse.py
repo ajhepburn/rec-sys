@@ -27,6 +27,7 @@ def analyse_tokens(file):
             user = list(line.keys())[0]
             tweets = line[user]
             for tweet in tweets:
+                body = tweet['body']
                 tokens = tweet['tokens']
                 print(user, tokens)
 

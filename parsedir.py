@@ -68,6 +68,8 @@ def combine_files():
                             combined_store[user] += tweets
 
         #combined_store = {k: set(v) for k, v in combined_store.items()}
+        for user, tweets in combined_store.items():
+            combined_store[user] = {d['body']: d for d in reversed(tweets)}.values()
         return combined_store
 
     def write_combined_file(c_store, file_from, file_to):
