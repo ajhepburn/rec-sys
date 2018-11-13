@@ -37,7 +37,6 @@ def get_user_tweets():
                     fp.write("\n")
 
 def combine_files():
-
     def date_prompt():
         regexp = re.compile(r'\d{4}_\d{2}_\d{2}')
 

@@ -29,8 +29,6 @@ def tokens():
     return store
 
 def tokenize_combined_file(filename):
-    # files = [f for f in listdir(path) if isfile(join(path, f)) and f.startswith('st_comb_')]
-
     def check_file():
         my_file = Path(path+filename)
         if my_file.is_file(): return 1
@@ -39,7 +37,7 @@ def tokenize_combined_file(filename):
     def write_combined_file(c_store):
         #c_store = {k: set(v) for k, v in c_store.items()}
         print("Writing to file...")
-        with open(path+filename+"_TKN.txt", 'w') as fp:
+        with open(path+filename[:-4]+"_TKN.txt", 'w') as fp:
             for k, v in c_store.items():
                 json.dump({k:list(v)}, fp)
                 fp.write("\n")
@@ -49,6 +47,10 @@ def tokenize_combined_file(filename):
         store = {}
         print("Tokenization began:", str(datetime.now()))
         start_time = time.monotonic()
+
+        with open('./utilities/slang.txt') as sl:
+            slang_terms = json.loads(sl.readline())
+            slang_terms = [t.lower() for t in slang_terms]
 
         with open(path+filename) as f:
             for line in f:
@@ -60,7 +62,7 @@ def tokenize_combined_file(filename):
                     tweet_ct = re.sub(r'&#39;s', r"", tweet['body'])
                     tweet_ct = re.sub(r'&#39;', r"'", tweet['body'])
                     tokens = nlp(tweet_ct.lower(), disable=['parser', 'tagger', 'ner'])
-                    tokens = [token for token in tokens if not token.orth_.isspace() and token.is_alpha and not token.is_stop]
+                    tokens = [token for token in tokens if not token.orth_.isspace() and token.is_alpha and not token.is_stop and token.orth_ not in slang_terms]
                     tokens = [x.replace(u'zzzplaceholderzzz','$') for x in [token.text for token in iter(tokens)]]
                     if len(tokens) > 3:
                         sentence = [' '.join(tokens)]

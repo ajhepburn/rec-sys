@@ -1,7 +1,7 @@
 from gensim.models import Word2Vec
 from os import listdir
 from os.path import isfile, join
-import re
+import re, json
 
 def analyse_models(model_path):
     model = Word2Vec.load(model_path+'model.bin')
@@ -20,6 +20,17 @@ def analyse_tweet_bodies(path):
                 if regexp.search(line):
                     print(line)
 
+def analyse_tokens(file):
+    with open('./data/'+file) as data:
+        for raw_line in data:
+            line = json.loads(raw_line)
+            user = list(line.keys())[0]
+            tweets = line[user]
+            for tweet in tweets:
+                tokens = tweet['tokens']
+                print(user, tokens)
+
 
 #analyse_models('./models/')
-analyse_tweet_bodies("./data/")
+#analyse_tweet_bodies("./data/")
+analyse_tokens('st_comb_2018_01_01-2018_01_07_TKN.txt')
