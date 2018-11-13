@@ -59,11 +59,11 @@ def tokenize_combined_file(filename):
                 tweets = entry[user]
                 for tweet in tweets:
                     tweet_ct = re.sub(r'\$(\w+)',r'ZZZCASHTAGZZZ\1',tweet['body'])
-                    tweet_ct = re.sub(r'&#39;s', r"", tweet['body'])
-                    tweet_ct = re.sub(r'&#39;', r"'", tweet['body'])
+                    tweet_ct = re.sub(r'&#39;s', r"", tweet_ct)
+                    tweet_ct = re.sub(r'&#39;', r"'", tweet_ct)
                     tokens = nlp(tweet_ct.lower(), disable=['parser', 'tagger', 'ner'])
                     tokens = [token for token in tokens if not token.orth_.isspace() and token.is_alpha and not token.is_stop and token.orth_ not in slang_terms]
-                    tokens = [x.replace(u'zzzplaceholderzzz','$') for x in [token.text for token in iter(tokens)]]
+                    tokens = [x.replace(u'zzzcashtagzzz','$') for x in [token.text for token in iter(tokens)]]
                     if len(tokens) > 3:
                         sentence = [' '.join(tokens)]
                         if user not in store:

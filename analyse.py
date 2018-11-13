@@ -29,7 +29,7 @@ def analyse_tokens(file):
             for tweet in tweets:
                 body = tweet['body']
                 tokens = tweet['tokens']
-                print(user, tokens)
+                print(tokens)
 
 
 #analyse_models('./models/')
