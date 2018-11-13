@@ -16,21 +16,23 @@ def get_tweet_bodies_from_dir():
                             outputFile.write(line[68:].split(',"created_at"')[0]+'\n')
 
 def get_user_tweets():
-    data = {}
+    store = {}
 
     for filename in files:
-        print(filename)
         if not exists('./data/'+filename+".txt"):
             with open(path+filename) as inputFile:
                     for line in inputFile:
-                        user = json.loads(line)['data']['user']['username']
-                        tweet = json.loads(line)['data']['body']
+                        data = json.loads(line)
+                        user = data['data']['user']['username']
+                        tweet_id = data['data']['id']
+                        tweet_body = data['data']['body']
                         if user not in data:
-                            data[user] = [tweet]
+                            #store[user] = [tweet]
+                            store[user] = [{'id':tweet_id, 'body':tweet_body}]
                         else:
-                            data[user].append(tweet)
+                            store[user].append({'id':tweet_id, 'body':tweet_body})
             with open('./data/'+filename+".txt", 'w') as fp:
-                for k, v in data.items():
+                for k, v in store.items():
                     json.dump({k:v}, fp)
                     fp.write("\n")
 
@@ -65,8 +67,8 @@ def combine_files():
                             combined_store[user] = tweets
                         else:
                             combined_store[user] += tweets
-        
-        combined_store = {k: set(v) for k, v in combined_store.items()}
+
+        #combined_store = {k: set(v) for k, v in combined_store.items()}
         return combined_store
 
     def write_combined_file(c_store, file_from, file_to):
@@ -100,5 +102,5 @@ def combine_files():
         write_combined_file(c_store, store[date_from_index[0]], store[date_to_index[0]])
 
 
-
+#get_user_tweets()
 combine_files()

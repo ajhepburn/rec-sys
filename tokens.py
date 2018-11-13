@@ -37,7 +37,7 @@ def tokenize_combined_file(filename):
         else: return 0
 
     def write_combined_file(c_store):
-        c_store = {k: set(v) for k, v in c_store.items()}
+        #c_store = {k: set(v) for k, v in c_store.items()}
         print("Writing to file...")
         with open(path+filename+"_TKN.txt", 'w') as fp:
             for k, v in c_store.items():
@@ -56,16 +56,18 @@ def tokenize_combined_file(filename):
                 user = list(entry.keys())[0]
                 tweets = entry[user]
                 for tweet in tweets:
-                    tweet_ct = re.sub(r'\$(\w+)',r'ZZZPLACEHOLDERZZZ\1',tweet) 
+                    tweet_ct = re.sub(r'\$(\w+)',r'ZZZCASHTAGZZZ\1',tweet['body'])
+                    tweet_ct = re.sub(r'&#39;s', r"", tweet['body'])
+                    tweet_ct = re.sub(r'&#39;', r"'", tweet['body'])
                     tokens = nlp(tweet_ct.lower(), disable=['parser', 'tagger', 'ner'])
                     tokens = [token for token in tokens if not token.orth_.isspace() and token.is_alpha and not token.is_stop]
                     tokens = [x.replace(u'zzzplaceholderzzz','$') for x in [token.text for token in iter(tokens)]]
                     if len(tokens) > 3:
                         sentence = [' '.join(tokens)]
                         if user not in store:
-                            store[user] = sentence
+                            store[user] = [{'id':tweet['id'], 'body':tweet['body'], 'tokens':sentence}]
                         else:
-                            store[user] += sentence
+                            store[user].append({'id':tweet['id'], 'body':tweet['body'], 'tokens':sentence})
 
         end_time = time.monotonic()
         print("Tokenization Ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=end_time - start_time))
