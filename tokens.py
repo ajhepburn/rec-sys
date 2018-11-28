@@ -60,11 +60,10 @@ def tokenize_combined_file(filename):
                     tokens = [token for token in tokens if not token.orth_.isspace() and token.is_alpha and not token.is_stop and token.orth_ not in slang_terms]
                     tokens = [x.replace(u'zzzcashtagzzz','$') for x in [token.text for token in iter(tokens)]]
                     if len(tokens) > 3:
-                        sentence = [' '.join(tokens)]
                         if user not in store:
-                            store[user] = [{'id':tweet['id'], 'body':tweet['body'], 'tokens':sentence}]
+                            store[user] = [{'id':tweet['id'], 'body':tweet['body'], 'tokens':tokens}]
                         else:
-                            store[user].append({'id':tweet['id'], 'body':tweet['body'], 'tokens':sentence})
+                            store[user].append({'id':tweet['id'], 'body':tweet['body'], 'tokens':tokens})
 
         end_time = time.monotonic()
         print("Tokenization Ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=end_time - start_time))
