@@ -3,37 +3,32 @@ from os.path import isfile, join
 import time
 from datetime import timedelta, datetime
 import spacy, json, re
-from pathlib import Path
+from utils import check_file
 
 nlp = spacy.load('en')
 path = "./data/"
 
-def tokens():
-    store = []
-    files = [f for f in listdir(path) if isfile(join(path, f))]
+# def tokens():
+#     store = []
+#     files = [f for f in listdir(path) if isfile(join(path, f))]
 
-    print("Tokenization began:", str(datetime.now()))
-    start_time = time.monotonic()
-#    for filename in nlp.pipe(files, batch_size=10000, n_threads=3):
-    for filename in files:
-        with open(path+filename) as f:
-            #head = [next(f) for x in range(5)]
-            for line in f:
-                tokens = nlp(line.lower(), disable=['parser', 'tagger', 'ner'])
-                tokens = [token.lemma_ for token in tokens if not token.orth_.isspace() and token.is_alpha and not token.is_stop and token.lemma_ != '-PRON-' and len(token.orth_) >= 3 and token.text in nlp.vocab]
-                if len(tokens) != 0: store.append(tokens)
+#     print("Tokenization began:", str(datetime.now()))
+#     start_time = time.monotonic()
+# #    for filename in nlp.pipe(files, batch_size=10000, n_threads=3):
+#     for filename in files:
+#         with open(path+filename) as f:
+#             #head = [next(f) for x in range(5)]
+#             for line in f:
+#                 tokens = nlp(line.lower(), disable=['parser', 'tagger', 'ner'])
+#                 tokens = [token.lemma_ for token in tokens if not token.orth_.isspace() and token.is_alpha and not token.is_stop and token.lemma_ != '-PRON-' and len(token.orth_) >= 3 and token.text in nlp.vocab]
+#                 if len(tokens) != 0: store.append(tokens)
 
-    end_time = time.monotonic()
-    print("Tokenization Ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=end_time - start_time))
+#     end_time = time.monotonic()
+#     print("Tokenization Ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=end_time - start_time))
 
-    return store
+#     return store
 
 def tokenize_combined_file(filename):
-    def check_file():
-        my_file = Path(path+filename)
-        if my_file.is_file(): return 1
-        else: return 0
-
     def write_combined_file(c_store):
         #c_store = {k: set(v) for k, v in c_store.items()}
         print("Writing to file...")
@@ -75,7 +70,7 @@ def tokenize_combined_file(filename):
         print("Tokenization Ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=end_time - start_time))
         return store
     
-    if check_file():
+    if check_file(path, filename):
         store = tokenize()
         write_combined_file(store)
     
