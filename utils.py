@@ -5,8 +5,10 @@ import json
 
 def check_file(path, filename):
     my_file = Path(path+filename)
-    if my_file.is_file(): return 1
-    else: return 0
+    try:
+        my_file.resolve()
+    #if my_file.is_file(): return 1
+    except FileNotFoundError: raise
 
 def load_model(path, model_name):
         try:
