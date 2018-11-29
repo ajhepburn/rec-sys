@@ -4,7 +4,7 @@ from utils import check_file, NumpyEncoder, load_model
 import numpy as np
 import json
 
-class training():
+class Training:
     def __init__(self, model_name):
         self.path_data = './data/'
         self.path_models = './models/'
@@ -19,7 +19,6 @@ class training():
                     user = list(entry.keys())[0]
                     tweets = entry[user]
                     for tweet in tweets:
-                        # data.append(tweet['tokens'])
                         td = TaggedDocument(words=tweet['tokens'], tags=[user+"_"+str(tweets.index(tweet))])
                         tagged_docs.append(td)
         return tagged_docs
@@ -50,7 +49,7 @@ class training():
         model.save(self.path_models+self.model_name)
         print("Model Saved")
 
-class d2v_model():
+class D2VModel:
     def __init__(self, model):
         self.path_data = './data/'
         self.path_models = './models/'
@@ -99,7 +98,7 @@ class d2v_model():
             with open(self.path_data+filename) as f:
                 for line in f:
                     user = list(json.loads(line).keys())[0]
-                    user_vec = d2v_model.get_user_embedding(self.model, user)
+                    user_vec = D2VModel.get_user_embedding(self.model, user)
                     user_embeddings[user] = user_vec
         return user_embeddings
 
@@ -141,5 +140,5 @@ class d2v_model():
 # # user_embeddings = build_embeddings(path_models+'d2v.model')
 # #print(get_user_embedding(path_models+'d2v.model'))
 
-model = d2v_model(model='d2v.model')
+model = D2VModel(model='d2v.model')
 
