@@ -1,3 +1,4 @@
+from gensim.models.doc2vec import Doc2Vec
 from pathlib import Path
 import numpy as np
 import json
@@ -6,6 +7,13 @@ def check_file(path, filename):
     my_file = Path(path+filename)
     if my_file.is_file(): return 1
     else: return 0
+
+def load_model(path, model_name):
+        try:
+            model = Doc2Vec.load(path+model_name)
+        except FileNotFoundError: raise
+        
+        return model
 
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
