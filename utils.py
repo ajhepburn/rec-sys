@@ -1,5 +1,5 @@
 from gensim.models.doc2vec import Doc2Vec
-from gensim.models import Word2Vec
+from gensim.models import Word2Vec, KeyedVectors
 from pathlib import Path
 import numpy as np
 import json
@@ -16,7 +16,7 @@ def load_model(path, model_name, type):
         if type == 'd2v':
             model = Doc2Vec.load(path+model_name)
         elif type == 'w2v':
-            model = Word2Vec.load(path+'model_name')
+            model = KeyedVectors.load_word2vec_format(path+model_name, binary=True)
         else: raise Exception('Wrong type specified')
         
         return model

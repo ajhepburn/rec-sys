@@ -11,7 +11,7 @@ class Analysis:
         self.path_data = './data/'
         self.path_models = './models/'
         self.type = type
-        self.model = load_model(self.path_models, model, self.type)
+        self.model = model
 
     def infer_vector(self, test_data_list):
         # to find the vector of a document which is not in training data

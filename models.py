@@ -3,7 +3,7 @@ from gensim.models.doc2vec import Doc2Vec, TaggedDocument
 from datetime import timedelta, datetime
 
 from utils import check_file, NumpyEncoder, load_model
-from analysis import Doc2VecAnalysis
+from analysis import Analysis, Doc2VecAnalysis
 
 import numpy as np
 import json, time
@@ -112,9 +112,10 @@ class D2VModel:
 """
 
 class W2VModel:
-    def __init__(self):
+    def __init__(self, model):
         self.model_path = './models/'
-        self.model = load_model(self.model_path, 'word2vec_twitter_model.bin', 'w2v')
+        self.model_name = model
+        self.model = load_model(self.model_path, self.model_name, 'w2v')
         
 
 # tagged_data = get_tagged_data('st_comb_2018_01_01-2018_01_07_TKN.txt')
@@ -135,10 +136,12 @@ class W2VModel:
 # tagged_documents = t.create_tagged_documents('st_comb_2018_01_01-2018_01_31_TKN.txt')
 # t.train_model(tagged_documents)
 
-model = D2VModel(model='d2v.model')
-d2v_analysis = Doc2VecAnalysis(model='d2v.model', type='d2v')
+# model = D2VModel(model='d2v.model')
+# d2v_analysis = Doc2VecAnalysis(model='d2v.model', type='d2v')
 # user_embeddings = model.build_user_embeddings_store('st_comb_2018_01_01-2018_01_31_TKN.txt')
 # model.save_user_embeddings(user_embeddings)
 #model.tsne('st_comb_2018_01_01-2018_01_31_TKN.txt')
-print(d2v_analysis.get_vocab_size())
-print(d2v_analysis.get_number_of_docs())
+
+# model = W2VModel(model='word2vec_twitter_model.bin')
+# w2v_analysis = Analysis(model, 'w2v')
+# print(w2v_analysis.get_vocab_size())
