@@ -1,8 +1,10 @@
 from gensim.models import Word2Vec
 from gensim.models.doc2vec import Doc2Vec, TaggedDocument
 from datetime import timedelta, datetime
+from os import listdir
+from os.path import isfile, join
 
-from utils import check_file, NumpyEncoder, load_model
+from utils import check_file, NumpyEncoder, load_model, date_prompt
 from analysis import Analysis, Doc2VecAnalysis
 
 import numpy as np
@@ -16,20 +18,43 @@ import json, time
 class D2VTraining:
     def __init__(self, model_name):
         self.path_data = './data/'
+        self.raw_path = self.path_data+'raw/'
         self.path_models = './models/'
         self.model_name = model_name
 
+    def query_dates(self):
+        title = "TRAIN MODEL (DOC2VEC)"
+        store = [f for f in listdir(self.raw_path) if isfile(join(self.raw_path, f)) and "stocktwits_messages_" in f]
+        store.sort()
+        dates = []
+
+        for filename in store:
+            dates.append(filename[-14:-4])
+        
+        print("\n"+title+"\n"+("-"*len(title))+"\n"+"Data is available for the following dates:")
+        print("{}, {}".format(", ".join(dates[:-1]), dates[-1]))
+
+        date_from, date_to = None, None
+        while date_from == None and date_to == None:
+            try:
+                date_from, date_to = date_prompt(self, dates)
+            except TypeError: pass
+        
+        date_from_index, date_to_index = [i for i, s in enumerate(store) if date_from in s], [i for i, s in enumerate(store) if date_to in s]
+        if date_from_index != None and date_to_index != None:
+            files_selected = store[date_from_index[0]:date_to_index[0]+1]
+        return files_selected
+
     def create_tagged_documents(self, filename):
         tagged_docs = []
-        check_file(self.path_data, filename)
-        with open(self.path_data+filename) as f:
+        check_file(self.raw_path, filename)
+        with open(self.raw_path+filename) as f:
             for line in f:
                 entry = json.loads(line)
                 user = list(entry.keys())[0]
-                tweets = entry[user]
-                for tweet in tweets:
-                    td = TaggedDocument(words=tweet['tokens'], tags=[user+"_"+str(tweets.index(tweet))])
-                    tagged_docs.append(td)
+                tweet = entry[user]
+                td = TaggedDocument(words=tweet['tokens'], tags=[user])
+                tagged_docs.append(td)
         return tagged_docs
 
     def train_model(self, tagged_docs):
@@ -44,7 +69,7 @@ class D2VTraining:
                         dm=1)
         
         model.build_vocab(tagged_docs)
-        print("Training began:", str(datetime.now()))
+        print("\nTraining began:", str(datetime.now()))
         start_time = time.monotonic()
         for epoch in range(max_epochs):
             print('iteration {0}'.format(epoch))
@@ -145,3 +170,14 @@ class W2VModel:
 # model = W2VModel(model='word2vec_twitter_model.bin')
 # w2v_analysis = Analysis(model, 'w2v')
 # print(w2v_analysis.get_vocab_size())
+
+if __name__ == "__main__":
+    t = D2VTraining(model_name='d2v_2017.model')
+    files = t.query_dates()
+    tagged_docs = []
+    for f in files:
+        tagged_docs += t.create_tagged_documents(f)
+        print("Creating tagged documents... File Parsed: {0}, Total Documents: {1}".format(f, len(tagged_docs)))
+    t.train_model(tagged_docs)
+
+        
