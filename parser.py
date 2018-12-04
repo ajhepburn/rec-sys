@@ -6,7 +6,7 @@ import json, re
 # files = [f for f in listdir(path) if isfile(join(path, f))]
 # data = []
 
-class ParseDir:
+class Parser:
     def __init__ (self, directory):
         self.path_data = './data/'
         self.dir = directory
@@ -97,13 +97,13 @@ class ParseDir:
         date_from, date_to = None, None
         while date_from == None and date_to == None:
             try:
-                date_from, date_to = ParseDir.date_prompt(self, dates)
+                date_from, date_to = Parser.date_prompt(self, dates)
             except TypeError: pass
         
         date_from_index, date_to_index = [i for i, s in enumerate(store) if date_from in s], [i for i, s in enumerate(store) if date_to in s]
         if date_from_index != None and date_to_index != None:
-            c_store = ParseDir.combine_structures(self, store, date_from_index[0], date_to_index[0])
-            ParseDir.write_combined_file(self, c_store, store[date_from_index[0]], store[date_to_index[0]])
+            c_store = Parser.combine_structures(self, store, date_from_index[0], date_to_index[0])
+            Parser.write_combined_file(self, c_store, store[date_from_index[0]], store[date_to_index[0]])
 
 
     
@@ -210,6 +210,6 @@ class ParseDir:
 #get_user_tweets()
 #combine_files()
 
-pd = ParseDir("/media/ntfs/st_data/month/")
+pd = Parser("/media/ntfs/st_data/month/")
 #pd.get_user_tweets()
 #pd.combine_files()
