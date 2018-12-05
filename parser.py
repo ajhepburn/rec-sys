@@ -9,11 +9,6 @@ from utils import lines_that_contain, check_file, date_prompt
 import spacy, json, re, itertools, multiprocessing
 import more_itertools as mit
 
-
-# path = "/media/ntfs/st_data/week/"
-# files = [f for f in listdir(path) if isfile(join(path, f))]
-# data = []
-
 class Parser:
     def __init__ (self, directory):
         self.path_data = './data/'
@@ -28,7 +23,7 @@ class Parser:
 
 
     def split_files(self, no_of_processes):
-        files = [list(c) for c in mit.divide(no_of_processes, self.files)]
+        files = [list(c) for c in mit.divide(int(no_of_processes), self.files)]
         return files
 
 
@@ -47,7 +42,7 @@ class Parser:
                 l_token = token.lemma_
                 l_tokens.append(l_token)
         tokens = l_tokens
-        if len(tokens) > 4:
+        if len(tokens) > 3:
             return tokens
 
     def parse_file(self, filename):

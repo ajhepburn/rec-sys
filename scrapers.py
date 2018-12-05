@@ -4,36 +4,37 @@ from contextlib import closing
 from bs4 import BeautifulSoup
 import json
 
-def get_content(url):
-    try:
-        with closing(get(url, stream=True)) as resp:
-            if is_good_response(resp):
-                return resp.content
-            else:
-                return None
+class SlangScraper:
+    def __init__(self, url):
+        self.url = url
+        self.util_path = './utilities/'
 
-    except RequestException as e:
-        log_error('Error during requests to {0} : {1}'.format(url, str(e)))
-        return None
+    def get_content(self):
+        try:
+            with closing(get(self.url, stream=True)) as resp:
+                if self.is_good_response(resp):
+                    return resp.content
+                else:
+                    return None
 
-
-def is_good_response(resp):
-    content_type = resp.headers['Content-Type'].lower()
-    return (resp.status_code == 200 
-            and content_type is not None 
-            and content_type.find('html') > -1)
+        except RequestException as e:
+            self.log_error('Error during requests to {0} : {1}'.format(self.url, str(e)))
+            return None
 
 
-def log_error(e):
-    print(e)
+    def is_good_response(self, resp):
+        content_type = resp.headers['Content-Type'].lower()
+        return (resp.status_code == 200 
+                and content_type is not None 
+                and content_type.find('html') > -1)
 
 
-def scrape_slang():
-    slang_terms = []
+    def log_error(self, e):
+        print(e)
 
-    def scrape_terms():
+    def scrape_terms(self):
         terms = []
-        asp_content = get_content('https://www.webopedia.com/quick_ref/textmessageabbreviations.asp')
+        asp_content = self.get_content()
         soup = BeautifulSoup(asp_content, 'lxml')
         content = soup.find("div", {"id": "article_main_column"})
         table = content.find("table")
@@ -43,15 +44,15 @@ def scrape_slang():
             if term.find('p'):
                 terms.append(term.find('p').text)
         return terms
-    
-    def write_to_utilities(path, terms):
+
+    def write_to_utilities(self, terms):
         print("Writing to file...")
-        with open(path+"slang.txt", 'w') as fp:
+        with open(self.util_path+"slang.txt", 'w') as fp:
             json.dump(terms, fp)
         print("Write complete")
-    
-    slang_terms = scrape_terms()
-    if slang_terms:
-        write_to_utilities('./utilities/',slang_terms)
 
-scrape_slang()
+if __name__ == '__main__':
+    ss = SlangScraper(url='https://www.webopedia.com/quick_ref/textmessageabbreviations.asp')
+    slang_terms = ss.scrape_terms()
+    if slang_terms:
+        ss.write_to_utilities(slang_terms)
