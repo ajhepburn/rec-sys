@@ -16,22 +16,25 @@ import json, time
 """
 
 class D2VTraining:
-    def __init__(self, model_name):
+    def __init__(self, model_name, all=False):
         self.path_data = './data/'
         self.raw_path = self.path_data+'raw/'
         self.path_models = './models/'
         self.model_name = model_name
+        self.all = all
 
     def query_dates(self):
         title = "TRAIN MODEL (DOC2VEC)"
         store = [f for f in listdir(self.raw_path) if isfile(join(self.raw_path, f)) and "stocktwits_messages_" in f]
         store.sort()
-        dates = []
+        
+        if all:
+            return store
 
+        print("\n"+title+"\n"+("-"*len(title))+"\n"+"Data is available for the following dates:")
+        dates = []
         for filename in store:
             dates.append(filename[-14:-4])
-        
-        print("\n"+title+"\n"+("-"*len(title))+"\n"+"Data is available for the following dates:")
         print("{}, {}".format(", ".join(dates[:-1]), dates[-1]))
 
         date_from, date_to = None, None
@@ -55,31 +58,39 @@ class D2VTraining:
                 tweet = entry[user]
                 td = TaggedDocument(words=tweet['tokens'], tags=[user])
                 tagged_docs.append(td)
+        f.close()
         return tagged_docs
 
     def train_model(self, tagged_docs):
-        max_epochs = 100
-        vec_size = 20
-        alpha = 0.025
+        max_epochs = 30
+        vec_size = 100
+        # alpha = 0.025
 
         model = Doc2Vec(vector_size=vec_size,
-                        alpha=alpha, 
-                        min_alpha=0.00025,
-                        min_count=1,
-                        dm=1)
-        
-        model.build_vocab(tagged_docs)
-        print("\nTraining began:", str(datetime.now()))
+                        min_count=2,
+                        dm=0,
+                        workers=8,
+                        epochs=max_epochs)
+        print("\nBuilding vocabulary started:", str(datetime.now()))
+        vocab_start_time = time.monotonic()
+        model.build_vocab(tagged_docs, progress_per=50000)
+        vocab_end_time = time.monotonic()
+        print("Building vocabulary ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=vocab_end_time - vocab_start_time))
+
+        print("Training began:", str(datetime.now()))
         start_time = time.monotonic()
-        for epoch in range(max_epochs):
-            print('iteration {0}'.format(epoch))
-            model.train(tagged_docs,
+        model.train(tagged_docs,
                         total_examples=model.corpus_count,
-                        epochs=model.iter)
-            # decrease the learning rate
-            model.alpha -= 0.0002
-            # fix the learning rate, no decay
-            model.min_alpha = model.alpha
+                        epochs=model.epochs)
+        # for epoch in range(max_epochs):
+        #     print('iteration {0}'.format(epoch))
+        #     model.train(tagged_docs,
+        #                 total_examples=model.corpus_count,
+        #                 epochs=model.epochs)
+        #     # decrease the learning rate
+        #     model.alpha -= 0.0002
+        #     # fix the learning rate, no decay
+        #     model.min_alpha = model.alpha
         end_time = time.monotonic()
         print("Training Ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=end_time - start_time))
 
@@ -172,12 +183,13 @@ class W2VModel:
 # print(w2v_analysis.get_vocab_size())
 
 if __name__ == "__main__":
-    t = D2VTraining(model_name='d2v_2017.model')
+    t = D2VTraining(model_name='d2v_100d_dbow_2017ds.model', all=True)
     files = t.query_dates()
     tagged_docs = []
+    print("\n")
     for f in files:
         tagged_docs += t.create_tagged_documents(f)
-        print("Creating tagged documents... File Parsed: {0}, Total Documents: {1}".format(f, len(tagged_docs)))
+        print("Creating tagged documents... File Parsed: {0}, Total Documents: {1}".format(f, len(tagged_docs)), end="\r")
     t.train_model(tagged_docs)
 
         
