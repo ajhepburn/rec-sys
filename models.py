@@ -142,7 +142,7 @@ class D2VModel:
         with open(self.path_data+filename) as f:
             for line in f:
                 user = list(json.loads(line).keys())[0]
-                user_vec = D2VModel.get_user_embedding(self, user)
+                user_vec = self.get_user_embedding(user)
                 user_embeddings[user] = user_vec
         end_time = time.monotonic()
         print("User embeddings process ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=end_time - start_time))

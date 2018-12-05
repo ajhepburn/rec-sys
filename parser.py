@@ -53,7 +53,7 @@ class Parser:
                     user = data['data']['user']['username']
                     tweet_id = data['data']['id']
                     tweet_body = data['data']['body']
-                    tokens = Parser.tokenise(self, tweet_body)
+                    tokens = self.tokenise(tweet_body)
                     if tokens:
                         entry = {'id':tweet_id, 'body':tweet_body, 'tokens':tokens}
                         json.dump({user:entry}, fp)
@@ -63,7 +63,7 @@ class Parser:
     def get_user_tweets(self, files):
         for filename in files:
             if not exists(self.tweets_path+filename+'.txt'):
-                Parser.parse_file(self, filename)
+                self.parse_file(filename)
 
     """ The following functions are responsible for combining the files and their tweets.
 
