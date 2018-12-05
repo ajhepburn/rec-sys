@@ -1,37 +1,53 @@
 from gensim.models import Word2Vec
 from gensim.models.doc2vec import Doc2Vec, TaggedDocument
 from datetime import timedelta, datetime
-from os import listdir
+from os import listdir, walk
 from os.path import isfile, join
 
 from utils import check_file, NumpyEncoder, load_model, date_prompt
 from analysis import Analysis, Doc2VecAnalysis
 
 import numpy as np
-import json, time
+import json, time, multiprocessing
 
 
 """ DOC2VEC RELATED FUNCTIONALITY
 
 """
 
+class TaggedDocumentIterator(object):
+    def __init__(self, doc_list):
+        self.doc_list = doc_list
+        self.path_data = './data/'
+        self.tweets_path = self.path_data+'tweets/'
+
+    def __iter__(self):
+        for doc in enumerate(self.doc_list):
+            with open(self.tweets_path+doc[1]) as f:
+                for line in f:
+                    entry = json.loads(line)
+                    user = list(entry.keys())[0]
+                    tweet = entry[user]
+                    yield TaggedDocument(words=tweet['tokens'], tags=[user])
+
 class D2VTraining:
     def __init__(self, model_name, all=False):
         self.path_data = './data/'
-        self.raw_path = self.path_data+'raw/'
+        self.tweets_path = self.path_data+'tweets/'
         self.path_models = './models/'
         self.model_name = model_name
         self.all = all
 
     def query_dates(self):
-        title = "TRAIN MODEL (DOC2VEC)"
-        store = [f for f in listdir(self.raw_path) if isfile(join(self.raw_path, f)) and "stocktwits_messages_" in f]
+        title = "TRAIN MODEL (DOC2VEC: "
+        store = [f for f in listdir(self.tweets_path) if isfile(join(self.tweets_path, f)) and "stocktwits_messages_" in f]
         store.sort()
         
         if all:
+            print("\n"+title+self.model_name+")\n"+("-"*(len(title)+len(self.model_name)+1)))
             return store
 
-        print("\n"+title+"\n"+("-"*len(title))+"\n"+"Data is available for the following dates:")
+        print("\n"+title+self.model_name+")\n"+("-"*(len(title)+len(self.model_name)+1))+"\n"+"Data is available for the following dates:")
         dates = []
         for filename in store:
             dates.append(filename[-14:-4])
@@ -47,29 +63,18 @@ class D2VTraining:
         if date_from_index != None and date_to_index != None:
             files_selected = store[date_from_index[0]:date_to_index[0]+1]
         return files_selected
-
-    def create_tagged_documents(self, filename):
-        tagged_docs = []
-        check_file(self.raw_path, filename)
-        with open(self.raw_path+filename) as f:
-            for line in f:
-                entry = json.loads(line)
-                user = list(entry.keys())[0]
-                tweet = entry[user]
-                td = TaggedDocument(words=tweet['tokens'], tags=[user])
-                tagged_docs.append(td)
-        f.close()
-        return tagged_docs
+                
 
     def train_model(self, tagged_docs):
         max_epochs = 30
         vec_size = 100
+        no_of_workers = multiprocessing.cpu_count()
         # alpha = 0.025
 
         model = Doc2Vec(vector_size=vec_size,
                         min_count=2,
                         dm=0,
-                        workers=8,
+                        workers=no_of_workers,
                         epochs=max_epochs)
         print("\nBuilding vocabulary started:", str(datetime.now()))
         vocab_start_time = time.monotonic()
@@ -152,44 +157,10 @@ class W2VModel:
         self.model_path = './models/'
         self.model_name = model
         self.model = load_model(self.model_path, self.model_name, 'w2v')
-        
-
-# tagged_data = get_tagged_data('st_comb_2018_01_01-2018_01_07_TKN.txt')
-# print(tagged_data)
-# #train_model(tagged_data)
-
-# # # #print(tagged_data, end="\n\n")
-# # #analyse_model(path_models+'d2v.model')
-# # user_embeddings('st_comb_2018_01_01-2018_01_07_TKN.txt')
-# # # user_embeddings = build_embeddings(path_models+'d2v.model')
-# # #print(get_user_embedding(path_models+'d2v.model'))
-
-# model = D2VModel(model='d2v.model')
-# t = Training('d2v.model')
-# tagged_docs = t.create_tagged_documents('st_comb_2018_01_01-2018_01_07_TKN.txt')
-
-# t = Training('d2v.model')
-# tagged_documents = t.create_tagged_documents('st_comb_2018_01_01-2018_01_31_TKN.txt')
-# t.train_model(tagged_documents)
-
-# model = D2VModel(model='d2v.model')
-# d2v_analysis = Doc2VecAnalysis(model='d2v.model', type='d2v')
-# user_embeddings = model.build_user_embeddings_store('st_comb_2018_01_01-2018_01_31_TKN.txt')
-# model.save_user_embeddings(user_embeddings)
-#model.tsne('st_comb_2018_01_01-2018_01_31_TKN.txt')
-
-# model = W2VModel(model='word2vec_twitter_model.bin')
-# w2v_analysis = Analysis(model, 'w2v')
-# print(w2v_analysis.get_vocab_size())
 
 if __name__ == "__main__":
     t = D2VTraining(model_name='d2v_100d_dbow_2017ds.model', all=True)
-    files = t.query_dates()
-    tagged_docs = []
-    print("\n")
-    for f in files:
-        tagged_docs += t.create_tagged_documents(f)
-        print("Creating tagged documents... File Parsed: {0}, Total Documents: {1}".format(f, len(tagged_docs)), end="\r")
+    tagged_docs = TaggedDocumentIterator(t.query_dates())
     t.train_model(tagged_docs)
 
         
