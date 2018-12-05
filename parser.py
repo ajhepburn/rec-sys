@@ -112,7 +112,7 @@ if __name__ == "__main__":
     print("Parsing/Tokenisation began:", str(datetime.now()))
     start_time = time.monotonic()
     
-    no_of_processes = multiprocessing.cpu_count()
+    no_of_processes = multiprocessing.cpu_count()/2
     procs = []
     
     files = pd.split_files(no_of_processes)

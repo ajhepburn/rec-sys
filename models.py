@@ -68,7 +68,7 @@ class D2VTraining:
     def train_model(self, tagged_docs):
         max_epochs = 30
         vec_size = 100
-        no_of_workers = multiprocessing.cpu_count()
+        no_of_workers = multiprocessing.cpu_count()/2
         # alpha = 0.025
 
         model = Doc2Vec(vector_size=vec_size,
