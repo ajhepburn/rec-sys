@@ -32,7 +32,7 @@ class Parser:
         tweet_ct = re.sub(r'&#39;s', r"", tweet_ct)
         tweet_ct = re.sub(r'&#39;', r"'", tweet_ct)
         tokens = self.nlp(tweet_ct.lower(), disable=['parser', 'tagger', 'ner'])
-        tokens = [token for token in tokens if not token.orth_.isspace() and token.is_alpha and not token.is_stop and token.orth_ not in self.slang_terms and token.lemma_ != '-PRON-' and len(token.orth_) > 3]
+        tokens = [token for token in tokens if not token.orth_.isspace() and re.match('^[a-z]*$', token.orth_) and not token.is_stop and token.orth_ not in self.slang_terms and 'haha' not in token.orth_ and token.lemma_ != '-PRON-' and len(token.orth_) > 3]
         l_tokens = []
         for token in tokens:
             if token.orth_.startswith('zzzcashtagzzz'):
@@ -41,8 +41,12 @@ class Parser:
             else:
                 l_token = token.lemma_
                 l_tokens.append(l_token)
-        tokens = l_tokens
-        if len(tokens) > 3:
+        
+        tokens = []
+        for token in l_tokens:
+            if not token.startswith('$') and len(token) > 4:
+                tokens.append(''.join(['' if i>1 and e==token[i-2] else e for i,e in enumerate(token)]))
+        if len(tokens) > 2:
             return tokens
 
     def parse_file(self, filename):
@@ -103,7 +107,7 @@ class Parser:
 
 
 if __name__ == "__main__":
-    pd = Parser("/media/ntfs/st_2017/")
+    pd = Parser("/media/ntfs/st_2017/Q3-4/")
     print("Parsing/Tokenisation began:", str(datetime.now()))
     start_time = time.monotonic()
     

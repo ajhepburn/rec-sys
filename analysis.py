@@ -4,14 +4,14 @@ from utils import check_file, load_model
 from gensim.models import Word2Vec, Doc2Vec
 import re, json
 import numpy as np
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 
 class Analysis:
-    def __init__(self, model, type):
+    def __init__(self, model_name, type):
         self.path_data = './data/'
         self.path_models = './models/'
         self.type = type
-        self.model = model
+        self.model = load_model(self.path_models, model_name, type)
 
     def infer_vector(self, test_data_list):
         # to find the vector of a document which is not in training data

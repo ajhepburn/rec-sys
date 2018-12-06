@@ -22,13 +22,14 @@ class TaggedDocumentIterator(object):
         self.tweets_path = self.path_data+'tweets/'
 
     def __iter__(self):
+        count = 0
         for doc in enumerate(self.doc_list):
             with open(self.tweets_path+doc[1]) as f:
                 for line in f:
                     entry = json.loads(line)
                     user = list(entry.keys())[0]
                     tweet = entry[user]
-                    yield TaggedDocument(words=tweet['tokens'], tags=[user])
+                    yield TaggedDocument(words=tweet['tokens'], tags=[user+"_"+str(tweet['id'])])
 
 class D2VTraining:
     def __init__(self, model_name, all=False):
@@ -43,7 +44,7 @@ class D2VTraining:
         store = [f for f in listdir(self.tweets_path) if isfile(join(self.tweets_path, f)) and "stocktwits_messages_" in f]
         store.sort()
         
-        if all:
+        if self.all:
             print("\n"+title+self.model_name+")\n"+("-"*(len(title)+len(self.model_name)+1)))
             return store
 
@@ -66,23 +67,24 @@ class D2VTraining:
                 
 
     def train_model(self, tagged_docs):
-        max_epochs = 30
-        vec_size = 100
+        max_epochs = 10
+        vec_size = 200
         no_of_workers = multiprocessing.cpu_count()/2
         # alpha = 0.025
 
         model = Doc2Vec(vector_size=vec_size,
                         min_count=2,
-                        dm=0,
+                        dm=1,
                         workers=no_of_workers,
                         epochs=max_epochs)
+
         print("\nBuilding vocabulary started:", str(datetime.now()))
         vocab_start_time = time.monotonic()
         model.build_vocab(tagged_docs, progress_per=50000)
         vocab_end_time = time.monotonic()
-        print("Building vocabulary ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=vocab_end_time - vocab_start_time))
+        print("Building vocabulary ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=vocab_end_time - vocab_start_time), "Size:", len(model.wv.vocab))
 
-        print("Training began:", str(datetime.now()))
+        print("Training began:", str(datetime.now()), "Vector Size:", vec_size, "Epochs:",max_epochs)
         start_time = time.monotonic()
         model.train(tagged_docs,
                         total_examples=model.corpus_count,
@@ -159,8 +161,15 @@ class W2VModel:
         self.model = load_model(self.model_path, self.model_name, 'w2v')
 
 if __name__ == "__main__":
-    t = D2VTraining(model_name='d2v_100d_dbow_2017ds.model', all=True)
+    t = D2VTraining(model_name='d2v_200d_dm_2017.model', all=True)
     tagged_docs = TaggedDocumentIterator(t.query_dates())
     t.train_model(tagged_docs)
 
-        
+    # model = Doc2VecAnalysis(model_name='d2v_100d_dm_2017ds.model', type='d2v')
+    # print('Vocab Size:',model.get_vocab_size())
+    # print('Document Count:',model.get_number_of_docs())
+    # print('Apple:',model.most_similar_words('apple'))
+    # print('Google:',model.most_similar_words('google'))
+    # print('Tesla:',model.most_similar_words('tesla'))
+    # print('King + Woman - Man =',model.subtract_from_vectors('king','woman','man'))
+    # print('{0} + {1} - {2} ='.format('Paris','England','London'),model.subtract_from_vectors('paris','england','london'))
