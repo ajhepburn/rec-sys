@@ -10,9 +10,11 @@ import spacy, json, re, itertools, multiprocessing
 import more_itertools as mit
 
 class Parser:
-    def __init__ (self, directory):
+    def __init__ (self, directory, all=False):
+        self.all = all
         self.path_data = './data/'
         self.tweets_path = self.path_data+'tweets/'
+        self.trainables_path = self.path_data+'trainable/'
         self.dir = directory
         self.files = [f for f in listdir(self.dir) if isfile(join(self.dir, f))]
         self.files.sort()
@@ -105,24 +107,82 @@ class Parser:
             print("\nUsers written to file:", users_file)
             print("Please use command (on Unix filesystems): 'sort -u -o "+users_file+" "+users_file+"' to get unique users")
 
+    def query_dates(self):
+            store = [f for f in listdir(self.tweets_path) if isfile(join(self.tweets_path, f)) and "stocktwits_messages_" in f]
+            store.sort()
+            
+            if self.all:
+                return store
+
+            print("\n"+"Data is available for the following dates:")
+            dates = []
+            for filename in store:
+                dates.append(filename[-14:-4])
+            print("{}, {}".format(", ".join(dates[:-1]), dates[-1]))
+
+            date_from, date_to = None, None
+            while date_from == None and date_to == None:
+                try:
+                    date_from, date_to = date_prompt(self, dates)
+                except TypeError: pass
+            
+            date_from_index, date_to_index = [i for i, s in enumerate(store) if date_from in s], [i for i, s in enumerate(store) if date_to in s]
+            if date_from_index != None and date_to_index != None:
+                files_selected = store[date_from_index[0]:date_to_index[0]+1]
+            return files_selected
+
+    def convert_to_trainable(self):
+        if self.all:
+            files = [f for f in listdir(self.tweets_path) if isfile(join(self.tweets_path, f)) and "stocktwits_messages_" in f]
+            files.sort()
+        else:
+            files = self.query_dates()
+        date_from, date_to = files[0][-14:-4], files[len(files)-1][-14:-4]
+        file_to_write = "trainable_"+date_from+"-"+date_to+".txt"
+
+        print("Writing trainable file ("+date_from+" to "+date_to+") at:", str(datetime.now()))
+        start_time = time.monotonic()
+        
+        with open(self.trainables_path+file_to_write, "w") as fp:
+            for doc in enumerate(files):
+                with open(self.tweets_path+doc[1]) as f:
+                    for line in f:
+                        entry = json.loads(line)
+                        user = list(entry.keys())[0]
+                        tweet = entry[user]
+                        fp.write(user+"_"+str(tweet['id'])+" ")
+                        for token in tweet['tokens']:
+                            if tweet['tokens'].index(token) != len(tweet['tokens'])-1:
+                                fp.write(token+" ")
+                            else:
+                                fp.write(token)
+                        fp.write("\n")
+
+        end_time = time.monotonic()
+        print("Ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=end_time - start_time))
+
+
+
 
 if __name__ == "__main__":
-    pd = Parser("/media/ntfs/st_2017/Q3-4/")
-    print("Parsing/Tokenisation began:", str(datetime.now()))
-    start_time = time.monotonic()
+    # pd = Parser("/media/ntfs/st_2017/")
+    # print("Parsing/Tokenisation began:", str(datetime.now()))
+    # start_time = time.monotonic()
     
-    no_of_processes = multiprocessing.cpu_count()/2
-    procs = []
+    # no_of_processes = multiprocessing.cpu_count()/2
+    # procs = []
     
-    files = pd.split_files(no_of_processes)
+    # files = pd.split_files(no_of_processes)
 
-    for index, file_list in enumerate(files):
-        proc = multiprocessing.Process(target=pd.get_user_tweets, args=(file_list,))
-        procs.append(proc)
-        proc.start()
+    # for index, file_list in enumerate(files):
+    #     proc = multiprocessing.Process(target=pd.get_user_tweets, args=(file_list,))
+    #     procs.append(proc)
+    #     proc.start()
     
-    for proc in procs:
-        proc.join()
+    # for proc in procs:
+    #     proc.join()
 
-    end_time = time.monotonic()
-    print("Parsing/Tokenisation Ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=end_time - start_time))
+    # end_time = time.monotonic()
+    # print("Parsing/Tokenisation Ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=end_time - start_time))
+    pd = Parser("/media/ntfs/st_2017", all=True)
+    pd.convert_to_trainable()

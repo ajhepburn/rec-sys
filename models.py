@@ -8,7 +8,7 @@ from utils import check_file, NumpyEncoder, load_model, date_prompt
 from analysis import Analysis, Doc2VecAnalysis
 
 import numpy as np
-import json, time, multiprocessing
+import json, time, multiprocessing, logging
 
 
 """ DOC2VEC RELATED FUNCTIONALITY
@@ -16,60 +16,60 @@ import json, time, multiprocessing
 """
 
 class TaggedDocumentIterator(object):
-    def __init__(self, doc_list):
-        self.doc_list = doc_list
+    def __init__(self, doc):
+        # self.doc_list = doc_list
         self.path_data = './data/'
-        self.tweets_path = self.path_data+'tweets/'
+        # self.tweets_path = self.path_data+'tweets/'
+        self.trainables_path = self.path_data+'trainable/'
+        self.doc = doc
 
     def __iter__(self):
-        count = 0
-        for doc in enumerate(self.doc_list):
-            with open(self.tweets_path+doc[1]) as f:
-                for line in f:
-                    entry = json.loads(line)
-                    user = list(entry.keys())[0]
-                    tweet = entry[user]
-                    yield TaggedDocument(words=tweet['tokens'], tags=[user+"_"+str(tweet['id'])])
+        with open(self.trainables_path+self.doc) as f:
+            for line in f:
+                tokens = line.split(" ")
+                tag = tokens[0]
+                words = tokens[1:]
+                yield TaggedDocument(words=words, tags=[tag])
+        # for doc in enumerate(self.doc_list):
+        #     with open(self.tweets_path+doc[1]) as f:
+        #         for line in f:
+        #             entry = json.loads(line)
+        #             user = list(entry.keys())[0]
+        #             tweet = entry[user]
+        #             yield TaggedDocument(words=tweet['tokens'], tags=[user+"_"+str(tweet['id'])])
 
 class D2VTraining:
-    def __init__(self, model_name, all=False):
+    def __init__(self, model_name):
         self.path_data = './data/'
         self.tweets_path = self.path_data+'tweets/'
+        self.trainables_path = self.path_data+'trainable/'
+        self.log_path = './log/'
         self.path_models = './models/'
         self.model_name = model_name
-        self.all = all
 
-    def query_dates(self):
+    def query_trainable(self):
         title = "TRAIN MODEL (DOC2VEC: "
-        store = [f for f in listdir(self.tweets_path) if isfile(join(self.tweets_path, f)) and "stocktwits_messages_" in f]
+        store = [f[10:-4] for f in listdir(self.trainables_path) if isfile(join(self.trainables_path, f)) and "trainable_" in f]
         store.sort()
-        
-        if self.all:
-            print("\n"+title+self.model_name+")\n"+("-"*(len(title)+len(self.model_name)+1)))
-            return store
 
-        print("\n"+title+self.model_name+")\n"+("-"*(len(title)+len(self.model_name)+1))+"\n"+"Data is available for the following dates:")
-        dates = []
-        for filename in store:
-            dates.append(filename[-14:-4])
-        print("{}, {}".format(", ".join(dates[:-1]), dates[-1]))
+        print("\n"+title+self.model_name+")\n"+("-"*(len(title)+len(self.model_name)+1))+"\n"+"The following trainable files are available:", end="\n")
+        print(store)
 
-        date_from, date_to = None, None
-        while date_from == None and date_to == None:
-            try:
-                date_from, date_to = date_prompt(self, dates)
-            except TypeError: pass
+        print("\nPlease choose a corresponding file:")
+        trainable_file = input("> ")
+
+        while trainable_file not in store:
+            print("\nNot in store, please try again.")
+            trainable_file = input("> ")
         
-        date_from_index, date_to_index = [i for i, s in enumerate(store) if date_from in s], [i for i, s in enumerate(store) if date_to in s]
-        if date_from_index != None and date_to_index != None:
-            files_selected = store[date_from_index[0]:date_to_index[0]+1]
-        return files_selected
+        return "trainable_"+trainable_file+".txt"
                 
 
     def train_model(self, tagged_docs):
-        max_epochs = 10
+        max_epochs = 15
         vec_size = 200
-        no_of_workers = multiprocessing.cpu_count()/2
+        no_of_workers = multiprocessing.cpu_count()
+        logging.basicConfig(filename=self.log_path+'log_'+self.model_name[:-6]+" ("+str(datetime.now())+').log',level=logging.INFO)
         # alpha = 0.025
 
         model = Doc2Vec(vector_size=vec_size,
@@ -78,28 +78,29 @@ class D2VTraining:
                         workers=no_of_workers,
                         epochs=max_epochs)
 
+        # BUILD VOCABULARY
         print("\nBuilding vocabulary started:", str(datetime.now()))
+        logging.info('.. Build vocabulary '+str(datetime.now()))
         vocab_start_time = time.monotonic()
+
         model.build_vocab(tagged_docs, progress_per=50000)
+        
         vocab_end_time = time.monotonic()
         print("Building vocabulary ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=vocab_end_time - vocab_start_time), "Size:", len(model.wv.vocab))
+        logging.info('.. Build vocabulary ended '+str(datetime.now())+"Size: "+len(model.wv.vocab))
 
+        # TRAIN MODEL
         print("Training began:", str(datetime.now()), "Vector Size:", vec_size, "Epochs:",max_epochs)
+        logging.info('.. Train model '+str(datetime.now())+"Vector Size: "+vec_size+", Epochs:"+max_epochs)
         start_time = time.monotonic()
+
         model.train(tagged_docs,
                         total_examples=model.corpus_count,
                         epochs=model.epochs)
-        # for epoch in range(max_epochs):
-        #     print('iteration {0}'.format(epoch))
-        #     model.train(tagged_docs,
-        #                 total_examples=model.corpus_count,
-        #                 epochs=model.epochs)
-        #     # decrease the learning rate
-        #     model.alpha -= 0.0002
-        #     # fix the learning rate, no decay
-        #     model.min_alpha = model.alpha
+
         end_time = time.monotonic()
         print("Training Ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=end_time - start_time))
+        logging.info('.. Train model ended '+str(datetime.now()))
 
         model.save(self.path_models+self.model_name)
         print("Model Saved")
@@ -161,15 +162,9 @@ class W2VModel:
         self.model = load_model(self.model_path, self.model_name, 'w2v')
 
 if __name__ == "__main__":
-    t = D2VTraining(model_name='d2v_200d_dm_2017.model', all=True)
-    tagged_docs = TaggedDocumentIterator(t.query_dates())
+    t = D2VTraining(model_name='d2v_200d_15e_dm_2017.model')
+    tagged_docs = TaggedDocumentIterator(t.query_trainable())
     t.train_model(tagged_docs)
 
-    # model = Doc2VecAnalysis(model_name='d2v_100d_dm_2017ds.model', type='d2v')
-    # print('Vocab Size:',model.get_vocab_size())
-    # print('Document Count:',model.get_number_of_docs())
-    # print('Apple:',model.most_similar_words('apple'))
-    # print('Google:',model.most_similar_words('google'))
-    # print('Tesla:',model.most_similar_words('tesla'))
-    # print('King + Woman - Man =',model.subtract_from_vectors('king','woman','man'))
-    # print('{0} + {1} - {2} ='.format('Paris','England','London'),model.subtract_from_vectors('paris','england','london'))
+    #model = Doc2VecAnalysis(model_name='d2v_200d_dm_2017_q12.model', type='d2v')
+    

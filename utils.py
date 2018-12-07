@@ -1,6 +1,8 @@
 from gensim.models.doc2vec import Doc2Vec
 from gensim.models import Word2Vec, KeyedVectors
 from pathlib import Path
+from os import listdir
+from os.path import isfile, join
 import numpy as np
 import json, re
 
@@ -46,3 +48,13 @@ def date_prompt(self, dates):
     else:
         print("Dates do not exist in store, please try again.")
         return 0
+
+def count_docs_in_file(f):
+    count = 0
+    with open('./data/trainable/'+f) as fp:
+        for line in fp:
+            count += 1
+    print(count)
+
+
+#count_docs_in_file('trainable_2017_01_01-2017_12_31.txt')

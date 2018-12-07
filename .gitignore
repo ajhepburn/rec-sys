@@ -1,5 +1,6 @@
 models/
 data/
+log/
 .vscode
 __pycache__
 model.bin
