@@ -1,8 +1,8 @@
 from gensim.models import Word2Vec
 from gensim.models.doc2vec import Doc2Vec, TaggedDocument
 from datetime import timedelta, datetime
-from os import listdir, walk
-from os.path import isfile, join
+from os import listdir, walk, makedirs
+from os.path import isfile, join, exists
 
 from utils import check_file, NumpyEncoder, load_model, date_prompt
 from analysis import Analysis, Doc2VecAnalysis
@@ -37,6 +37,7 @@ class D2VTraining:
         self.log_path = './log/'
         self.path_models = './models/'
         self.model_name = model_name
+        # self.path_models_subpath = self.path_models+self.model_name[:-6]+'/'
         self.epochs = epochs
         self.vec_size = vec_size
 
@@ -62,7 +63,7 @@ class D2VTraining:
         max_epochs = self.epochs
         vec_size = self.vec_size
         no_of_workers = multiprocessing.cpu_count()/2
-        logging.basicConfig(filename=self.log_path+'log_'+self.model_name[:-6]+" ("+str(datetime.now())+').log',level=logging.INFO)
+        logging.basicConfig(filename=self.log_path+'training/log_'+self.model_name[:-6]+" ("+str(datetime.now())+').log',level=logging.INFO)
         # alpha = 0.025
 
         model = Doc2Vec(vector_size=vec_size,
@@ -95,8 +96,13 @@ class D2VTraining:
         print("Training Ended:", str(datetime.now())+".", "Time taken:", str(timedelta(seconds=end_time - start_time)))
         logging.info('.. Train model ended '+str(datetime.now())+' Time taken: '+str(timedelta(seconds=end_time - start_time)))
 
-        model.save(self.path_models+self.model_name)
+        # SAVE MODEL
+        if not exists(self.path_models+self.model_name[:-6]+'/'):
+            makedirs(self.path_models+self.model_name[:-6]+'/')
+        model.save(self.path_models+self.model_name[:-6]+'/'+self.model_name)
         print("Model Saved")
+
+        # CLEAR LOG CONFIGS
         for handler in logging.root.handlers[:]:
             logging.root.removeHandler(handler)
 
@@ -167,13 +173,25 @@ if __name__ == "__main__":
     # tagged_docs_1 = TaggedDocumentIterator('trainable_2017_01_01-2017_12_31.txt')
     # dim100_1.train_model(tagged_docs_1)
 
-    dim200_10e = D2VTraining(model_name='d2v_200d_10e_dm_2017_q12.model', vec_size=200, epochs=10)
-    tagged_docs_dim200_10e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
-    dim200_10e.train_model(tagged_docs_dim200_10e)
+    # dim200_10e = D2VTraining(model_name='d2v_200d_10e_dm_2017_q12.model', vec_size=200, epochs=10)
+    # tagged_docs_dim200_10e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
+    # dim200_10e.train_model(tagged_docs_dim200_10e)
 
     dim200_20e = D2VTraining(model_name='d2v_200d_20e_dm_2017_q12.model', vec_size=200, epochs=20)
     tagged_docs_dim200_20e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
     dim200_20e.train_model(tagged_docs_dim200_20e)
+
+    dim100_10e_q1q2 = D2VTraining(model_name='d2v_100d_10e_dm_2017_q12.model', vec_size=100, epochs=10)
+    tagged_docs_dim100_10e_q1q2 = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
+    dim100_10e_q1q2.train_model(tagged_docs_dim100_10e_q1q2)
+
+    dim100_15e_q1q2 = D2VTraining(model_name='d2v_100d_15e_dm_2017_q12.model', vec_size=100, epochs=15)
+    tagged_docs_dim100_15e_q1q2 = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
+    dim100_15e_q1q2.train_model(tagged_docs_dim100_15e_q1q2)
+
+    dim100_20e_q1q2 = D2VTraining(model_name='d2v_100d_20e_dm_2017_q12.model', vec_size=100, epochs=20)
+    tagged_docs_dim100_20e_q1q2 = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
+    dim100_20e_q1q2.train_model(tagged_docs_dim100_20e_q1q2)
 
     dim300_15e = D2VTraining(model_name='d2v_300d_15e_dm_2017_q12.model', vec_size=300, epochs=15)
     tagged_docs_dim300_15e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
