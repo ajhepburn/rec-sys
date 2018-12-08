@@ -17,9 +17,7 @@ import json, time, multiprocessing, logging
 
 class TaggedDocumentIterator(object):
     def __init__(self, doc):
-        # self.doc_list = doc_list
         self.path_data = './data/'
-        # self.tweets_path = self.path_data+'tweets/'
         self.trainables_path = self.path_data+'trainable/'
         self.doc = doc
 
@@ -30,22 +28,17 @@ class TaggedDocumentIterator(object):
                 tag = tokens[0]
                 words = tokens[1:]
                 yield TaggedDocument(words=words, tags=[tag])
-        # for doc in enumerate(self.doc_list):
-        #     with open(self.tweets_path+doc[1]) as f:
-        #         for line in f:
-        #             entry = json.loads(line)
-        #             user = list(entry.keys())[0]
-        #             tweet = entry[user]
-        #             yield TaggedDocument(words=tweet['tokens'], tags=[user+"_"+str(tweet['id'])])
 
 class D2VTraining:
-    def __init__(self, model_name):
+    def __init__(self, model_name, vec_size, epochs):
         self.path_data = './data/'
         self.tweets_path = self.path_data+'tweets/'
         self.trainables_path = self.path_data+'trainable/'
         self.log_path = './log/'
         self.path_models = './models/'
         self.model_name = model_name
+        self.epochs = epochs
+        self.vec_size = vec_size
 
     def query_trainable(self):
         title = "TRAIN MODEL (DOC2VEC: "
@@ -66,9 +59,9 @@ class D2VTraining:
                 
 
     def train_model(self, tagged_docs):
-        max_epochs = 15
-        vec_size = 200
-        no_of_workers = multiprocessing.cpu_count()
+        max_epochs = self.epochs
+        vec_size = self.vec_size
+        no_of_workers = multiprocessing.cpu_count()/2
         logging.basicConfig(filename=self.log_path+'log_'+self.model_name[:-6]+" ("+str(datetime.now())+').log',level=logging.INFO)
         # alpha = 0.025
 
@@ -83,15 +76,15 @@ class D2VTraining:
         logging.info('.. Build vocabulary '+str(datetime.now()))
         vocab_start_time = time.monotonic()
 
-        model.build_vocab(tagged_docs, progress_per=50000)
+        model.build_vocab(tagged_docs, progress_per=250000)
         
         vocab_end_time = time.monotonic()
         print("Building vocabulary ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=vocab_end_time - vocab_start_time), "Size:", len(model.wv.vocab))
-        logging.info('.. Build vocabulary ended '+str(datetime.now())+"Size: "+len(model.wv.vocab))
+        logging.info('.. Build vocabulary ended '+str(datetime.now())+" Time taken: "+ str(timedelta(seconds=vocab_end_time - vocab_start_time))+"Size: "+str(len(model.wv.vocab)))
 
         # TRAIN MODEL
         print("Training began:", str(datetime.now()), "Vector Size:", vec_size, "Epochs:",max_epochs)
-        logging.info('.. Train model '+str(datetime.now())+"Vector Size: "+vec_size+", Epochs:"+max_epochs)
+        logging.info('.. Train model '+str(datetime.now())+"Vector Size: "+str(vec_size)+", Epochs:"+str(max_epochs))
         start_time = time.monotonic()
 
         model.train(tagged_docs,
@@ -99,11 +92,13 @@ class D2VTraining:
                         epochs=model.epochs)
 
         end_time = time.monotonic()
-        print("Training Ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=end_time - start_time))
-        logging.info('.. Train model ended '+str(datetime.now()))
+        print("Training Ended:", str(datetime.now())+".", "Time taken:", str(timedelta(seconds=end_time - start_time)))
+        logging.info('.. Train model ended '+str(datetime.now())+' Time taken: '+str(timedelta(seconds=end_time - start_time)))
 
         model.save(self.path_models+self.model_name)
         print("Model Saved")
+        for handler in logging.root.handlers[:]:
+            logging.root.removeHandler(handler)
 
 class D2VModel:
     def __init__(self, model):
@@ -162,9 +157,28 @@ class W2VModel:
         self.model = load_model(self.model_path, self.model_name, 'w2v')
 
 if __name__ == "__main__":
-    t = D2VTraining(model_name='d2v_200d_15e_dm_2017.model')
-    tagged_docs = TaggedDocumentIterator(t.query_trainable())
-    t.train_model(tagged_docs)
+    # t = D2VTraining(model_name='d2v_200d_15e_dm_2017_q12.model')
+    # tagged_docs = TaggedDocumentIterator(t.query_trainable())
+    # t.train_model(tagged_docs)
 
-    #model = Doc2VecAnalysis(model_name='d2v_200d_dm_2017_q12.model', type='d2v')
-    
+    # model = Doc2VecAnalysis(model_name='d2v_200d_15e_dm_2017_JanAug.model', type='d2v')
+    # model.get_vocab_size
+    # dim100_1 = D2VTraining(model_name='d2v_100d_10e_dm_2017.model', vec_size=100, epochs=10)
+    # tagged_docs_1 = TaggedDocumentIterator('trainable_2017_01_01-2017_12_31.txt')
+    # dim100_1.train_model(tagged_docs_1)
+
+    dim200_10e = D2VTraining(model_name='d2v_200d_10e_dm_2017_q12.model', vec_size=200, epochs=10)
+    tagged_docs_dim200_10e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
+    dim200_10e.train_model(tagged_docs_dim200_10e)
+
+    dim200_20e = D2VTraining(model_name='d2v_200d_20e_dm_2017_q12.model', vec_size=200, epochs=20)
+    tagged_docs_dim200_20e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
+    dim200_20e.train_model(tagged_docs_dim200_20e)
+
+    dim300_15e = D2VTraining(model_name='d2v_300d_15e_dm_2017_q12.model', vec_size=300, epochs=15)
+    tagged_docs_dim300_15e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
+    dim300_15e.train_model(tagged_docs_dim300_15e)
+
+    dim300_20e = D2VTraining(model_name='d2v_300d_20e_dm_2017_q12.model', vec_size=300, epochs=20)
+    tagged_docs_dim300_20e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
+    dim300_20e.train_model(tagged_docs_dim300_20e)

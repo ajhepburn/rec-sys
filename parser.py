@@ -184,5 +184,5 @@ if __name__ == "__main__":
 
     # end_time = time.monotonic()
     # print("Parsing/Tokenisation Ended:", str(datetime.now())+".", "Time taken:", timedelta(seconds=end_time - start_time))
-    pd = Parser("/media/ntfs/st_2017", all=True)
+    pd = Parser("/media/ntfs/st_2017")
     pd.convert_to_trainable()

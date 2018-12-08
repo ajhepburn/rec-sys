@@ -5,13 +5,21 @@ from gensim.models import Word2Vec, Doc2Vec
 import re, json
 import numpy as np
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 class Analysis:
-    def __init__(self, model_name, type):
+    def __init__(self, model_name, model, type):
         self.path_data = './data/'
         self.path_models = './models/'
+        self.path_logs = './log/'
         self.type = type
-        self.model = load_model(self.path_models, model_name, type)
+        self.model_name = model_name
+        if self.type == "d2v":
+            self.model = load_model(self.path_models, model, self.type)
+            self.w2v = self.model.w2v
+        else:
+            self.model = model
+            self.w2v = self.model
 
     def infer_vector(self, test_data_list):
         # to find the vector of a document which is not in training data
@@ -19,17 +27,30 @@ class Analysis:
         print("V1_infer", v1)
 
     def get_vocab_size(self):
-        return len(self.model.wv.vocab)
+        return len(self.w2v.vocab)
 
     def most_similar_words(self, word):
-        similar=self.model.wv.most_similar(word)
+        similar=self.w2v.most_similar(word)
         words=list((w[0] for w in similar))
         return words
 
     def subtract_from_vectors(self, term1, term2, term_to_remove):
-        similar=self.model.wv.most_similar(positive=[term1, term2], negative=[term_to_remove], topn=1)
+        similar=self.w2v.most_similar(positive=[term1, term2], negative=[term_to_remove], topn=1)
         words=list((w[0] for w in similar))
         return words
+
+    def log(self):
+        with open(self.path_logs+"analysis/logger_"+self.model_name+"("+str(datetime.now())+").txt", "w") as fp:
+            title = "Model: "+self.model_name
+            print("\n"+title+"\n"+("-"*(len(title)+1)))
+            fp.write('Vocab Size: '+str(self.get_vocab_size())+"\n")
+            fp.write('Vocab Size: '+str(self.get_vocab_size())+"\n")
+            #fp.write('Document Count:',self.model.get_number_of_docs(), end="\n")
+            fp.write('Apple: '+str(self.most_similar_words('apple'))+"\n")
+            fp.write('Google: '+str(self.most_similar_words('google'))+"\n")
+            fp.write('Tesla: '+str(self.most_similar_words('tesla'))+"\n")
+            fp.write('King + Woman - Man = '+str(self.subtract_from_vectors('king','woman','man'))+"\n")
+            fp.write('{0} + {1} - {2} = '.format('Paris','England','London')+str(self.subtract_from_vectors('paris','england','london')))
 
 class Doc2VecAnalysis(Analysis):
     def get_number_of_docs(self):
