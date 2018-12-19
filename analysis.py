@@ -30,19 +30,28 @@ class Analysis:
         return len(self.w2v.vocab)
 
     def most_similar_words(self, word):
-        similar=self.w2v.most_similar(word)
-        words=list((w[0] for w in similar))
-        return words[:5]
+        try:
+            similar=self.w2v.most_similar(word)
+            words=list((w[0] for w in similar))
+            return words
+        except KeyError as e:
+            return str(e)
+        
 
     def subtract_from_vectors(self, term1, term_to_remove, term2):
-        similar=self.w2v.most_similar(positive=[term1, term2], negative=[term_to_remove], topn=1)
-        words=list((w[0] for w in similar))
-        return words
+        try:
+            similar=self.w2v.most_similar(positive=[term1, term2], negative=[term_to_remove], topn=1)
+            words=list((w[0] for w in similar))
+            return words
+        except KeyError as e:
+            return str(e)
+
 
     def log(self):
-        with open(self.path_logs+"analysis/logger_"+self.model_name+"("+str(datetime.now())+").txt", "w") as fp:
-            title = "Model: "+self.model_name
-            print("\n"+title+"\n"+("-"*(len(title)+1)))
+        with open(self.path_logs+"analysis/"+str(datetime.now())+"_log ("+self.model_name+").txt", "w") as fp:
+            # title = "Model: "+self.model_name
+            # print("\n"+title+"\n"+("-"*(len(title)+1)))
+            print("Saved Analysis log for "+self.model_name)
             fp.write('Vocab Size: '+str(self.get_vocab_size())+"\n")
             #fp.write('Vocab Size: '+str(self.get_vocab_size())+"\n")
             if self.type == 'd2v':

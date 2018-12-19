@@ -46,8 +46,10 @@ class Parser:
         
         tokens = []
         for token in l_tokens:
-            if not token.startswith('$') and len(token) > 4:
+            if not token.startswith('$'):
                 tokens.append(''.join(['' if i>1 and e==token[i-2] else e for i,e in enumerate(token)]))
+            else:
+                tokens.append(token)
         if len(tokens) > 2:
             return tokens
 

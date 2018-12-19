@@ -64,7 +64,7 @@ class D2VTraining:
         max_epochs = self.epochs
         vec_size = self.vec_size
         no_of_workers = multiprocessing.cpu_count()/2
-        logging.basicConfig(filename=self.log_path+'training/'+str(datetime.now())+'log_'+self.model_name[:-6]+'.log',level=logging.INFO)
+        logging.basicConfig(filename=self.log_path+'training/'+str(datetime.now())+'_log ('+self.model_name[:-6]+').log',level=logging.INFO)
         # alpha = 0.025
 
         model = Doc2Vec(vector_size=vec_size,
@@ -170,9 +170,9 @@ if __name__ == "__main__":
 
     # model = Doc2VecAnalysis(model_name='d2v_200d_15e_dm_2017_JanAug.model', type='d2v')
     # model.get_vocab_size
-    dim100_20e = D2VTraining(model_name='d2v_100d_10e_dm_2017_q1q2.model', vec_size=100, epochs=20)
-    tagged_docs_dim100_20e_q1q2 = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
-    dim100_20e.train_model(tagged_docs_dim100_20e_q1q2)
+    # dim100_20e = D2VTraining(model_name='d2v_100d_20e_dm_2017_q1q2.model', vec_size=100, epochs=20)
+    # tagged_docs_dim100_20e_q1q2 = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
+    # dim100_20e.train_model(tagged_docs_dim100_20e_q1q2)
 
     # dim200_10e = D2VTraining(model_name='d2v_200d_10e_dm_2017_q12.model', vec_size=200, epochs=10)
     # tagged_docs_dim200_10e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
@@ -202,6 +202,6 @@ if __name__ == "__main__":
     # tagged_docs_dim300_20e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
     # dim300_20e.train_model(tagged_docs_dim300_20e)
 
-    # model = D2VModel
-    # analysis = Doc2VecAnalysis('d2v_100d_10e_dm_2017_q12', model, 'd2v')
-    # analysis.log()
+    model = D2VModel
+    analysis = Doc2VecAnalysis('d2v_100d_20e_dm_2017_q1q2', model, 'd2v')
+    analysis.log()
