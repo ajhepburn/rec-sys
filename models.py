@@ -6,7 +6,6 @@ from os.path import isfile, join, exists
 
 from utils import check_file, NumpyEncoder, load_model, date_prompt
 from analysis import Analysis, Doc2VecAnalysis
-from logger import TrainingLogger
 
 import numpy as np
 import json, time, multiprocessing, logging
@@ -65,7 +64,7 @@ class D2VTraining:
         max_epochs = self.epochs
         vec_size = self.vec_size
         no_of_workers = multiprocessing.cpu_count()/2
-        logging.basicConfig(filename=self.log_path+'training/'+str(datetime.now())+'log_'+self.model_name[:-6]+".log',level=logging.INFO)
+        logging.basicConfig(filename=self.log_path+'training/'+str(datetime.now())+'log_'+self.model_name[:-6]+'.log',level=logging.INFO)
         # alpha = 0.025
 
         model = Doc2Vec(vector_size=vec_size,
