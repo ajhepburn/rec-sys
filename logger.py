@@ -1,19 +1,24 @@
 from analysis import Analysis, Doc2VecAnalysis
 from utils import load_model
 
+from datetime import timedelta, datetime
+import logging
+
 class Logger:
     def __init__(self, model_name, type, model=None):
         self.log_path = './log/'
         self.model_path = './models/'
         self.model_name = model_name
         self.type = type
-        if self.type == "d2v":
-            self.model = load_model(self.model_path, self.model_name, self.type)
-        else:
-            self.model = model
+        self.model = model
 
 class AnalysisLogger(Logger):
+    def init_model(self):
+        if self.type == "d2v":
+            self.model = load_model(self.model_path, self.model_name, self.type)
+
     def write_stats_to_file(self):
+        self.init_model()
         if self.type == "d2v":
             analysis = Doc2VecAnalysis(model_name=self.model_name, model=self.model, type='d2v')
         else:
@@ -30,3 +35,4 @@ class AnalysisLogger(Logger):
             fp.write('Tesla:',analysis.most_similar_words('tesla'), end="\n")
             fp.write('King + Woman - Man =',analysis.subtract_from_vectors('king','woman','man'), end="\n")
             fp.write('{0} + {1} - {2} ='.format('Paris','England','London'),analysis.subtract_from_vectors('paris','england','london'))
+

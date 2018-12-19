@@ -6,6 +6,7 @@ from os.path import isfile, join, exists
 
 from utils import check_file, NumpyEncoder, load_model, date_prompt
 from analysis import Analysis, Doc2VecAnalysis
+from logger import TrainingLogger
 
 import numpy as np
 import json, time, multiprocessing, logging
@@ -24,7 +25,8 @@ class TaggedDocumentIterator(object):
     def __iter__(self):
         with open(self.trainables_path+self.doc) as f:
             for line in f:
-                tokens = line.split(" ")
+                s_line = line.strip('\n')
+                tokens = s_line.split(" ")
                 tag = tokens[0]
                 words = tokens[1:]
                 yield TaggedDocument(words=words, tags=[tag])
@@ -63,7 +65,7 @@ class D2VTraining:
         max_epochs = self.epochs
         vec_size = self.vec_size
         no_of_workers = multiprocessing.cpu_count()/2
-        logging.basicConfig(filename=self.log_path+'training/log_'+self.model_name[:-6]+" ("+str(datetime.now())+').log',level=logging.INFO)
+        logging.basicConfig(filename=self.log_path+'training/'+str(datetime.now())+'log_'+self.model_name[:-6]+".log',level=logging.INFO)
         # alpha = 0.025
 
         model = Doc2Vec(vector_size=vec_size,
@@ -169,34 +171,38 @@ if __name__ == "__main__":
 
     # model = Doc2VecAnalysis(model_name='d2v_200d_15e_dm_2017_JanAug.model', type='d2v')
     # model.get_vocab_size
-    # dim100_1 = D2VTraining(model_name='d2v_100d_10e_dm_2017.model', vec_size=100, epochs=10)
-    # tagged_docs_1 = TaggedDocumentIterator('trainable_2017_01_01-2017_12_31.txt')
-    # dim100_1.train_model(tagged_docs_1)
+    dim100_20e = D2VTraining(model_name='d2v_100d_10e_dm_2017_q1q2.model', vec_size=100, epochs=20)
+    tagged_docs_dim100_20e_q1q2 = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
+    dim100_20e.train_model(tagged_docs_dim100_20e_q1q2)
 
     # dim200_10e = D2VTraining(model_name='d2v_200d_10e_dm_2017_q12.model', vec_size=200, epochs=10)
     # tagged_docs_dim200_10e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
     # dim200_10e.train_model(tagged_docs_dim200_10e)
 
-    dim200_20e = D2VTraining(model_name='d2v_200d_20e_dm_2017_q12.model', vec_size=200, epochs=20)
-    tagged_docs_dim200_20e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
-    dim200_20e.train_model(tagged_docs_dim200_20e)
+    # dim200_20e = D2VTraining(model_name='d2v_200d_20e_dm_2017_q12.model', vec_size=200, epochs=20)
+    # tagged_docs_dim200_20e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
+    # dim200_20e.train_model(tagged_docs_dim200_20e)
 
-    dim100_10e_q1q2 = D2VTraining(model_name='d2v_100d_10e_dm_2017_q12.model', vec_size=100, epochs=10)
-    tagged_docs_dim100_10e_q1q2 = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
-    dim100_10e_q1q2.train_model(tagged_docs_dim100_10e_q1q2)
+    # dim100_10e_q1q2 = D2VTraining(model_name='d2v_100d_10e_dm_2017_q12.model', vec_size=100, epochs=10)
+    # tagged_docs_dim100_10e_q1q2 = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
+    # dim100_10e_q1q2.train_model(tagged_docs_dim100_10e_q1q2)
 
-    dim100_15e_q1q2 = D2VTraining(model_name='d2v_100d_15e_dm_2017_q12.model', vec_size=100, epochs=15)
-    tagged_docs_dim100_15e_q1q2 = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
-    dim100_15e_q1q2.train_model(tagged_docs_dim100_15e_q1q2)
+    # dim100_15e_q1q2 = D2VTraining(model_name='d2v_100d_15e_dm_2017_q12.model', vec_size=100, epochs=15)
+    # tagged_docs_dim100_15e_q1q2 = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
+    # dim100_15e_q1q2.train_model(tagged_docs_dim100_15e_q1q2)
 
-    dim100_20e_q1q2 = D2VTraining(model_name='d2v_100d_20e_dm_2017_q12.model', vec_size=100, epochs=20)
-    tagged_docs_dim100_20e_q1q2 = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
-    dim100_20e_q1q2.train_model(tagged_docs_dim100_20e_q1q2)
+    # dim100_20e_q1q2 = D2VTraining(model_name='d2v_100d_20e_dm_2017_q12.model', vec_size=100, epochs=20)
+    # tagged_docs_dim100_20e_q1q2 = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
+    # dim100_20e_q1q2.train_model(tagged_docs_dim100_20e_q1q2)
 
-    dim300_15e = D2VTraining(model_name='d2v_300d_15e_dm_2017_q12.model', vec_size=300, epochs=15)
-    tagged_docs_dim300_15e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
-    dim300_15e.train_model(tagged_docs_dim300_15e)
+    # dim300_15e = D2VTraining(model_name='d2v_300d_15e_dm_2017_q12.model', vec_size=300, epochs=15)
+    # tagged_docs_dim300_15e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
+    # dim300_15e.train_model(tagged_docs_dim300_15e)
 
-    dim300_20e = D2VTraining(model_name='d2v_300d_20e_dm_2017_q12.model', vec_size=300, epochs=20)
-    tagged_docs_dim300_20e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
-    dim300_20e.train_model(tagged_docs_dim300_20e)
+    # dim300_20e = D2VTraining(model_name='d2v_300d_20e_dm_2017_q12.model', vec_size=300, epochs=20)
+    # tagged_docs_dim300_20e = TaggedDocumentIterator('trainable_2017_01_01-2017_06_30.txt')
+    # dim300_20e.train_model(tagged_docs_dim300_20e)
+
+    # model = D2VModel
+    # analysis = Doc2VecAnalysis('d2v_100d_10e_dm_2017_q12', model, 'd2v')
+    # analysis.log()
