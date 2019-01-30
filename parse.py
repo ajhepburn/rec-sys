@@ -1,7 +1,8 @@
-import os, sys, json, spacy, pymongo, pprint, logging, re
+import os, sys, json, spacy, pymongo, pprint, logging, re, io
 from datetime import timedelta, datetime
+import pandas as pd
 
-class Parser:
+class CBParser:
     def __init__(self, fp):
         if not os.path.isdir(fp):
             raise OSError('ERROR: Directory does not exist.')
@@ -13,9 +14,6 @@ class Parser:
             self.slang_terms = [t.lower() for t in slang_terms]
         self.nlp = spacy.load('en')
         self.log_path = './log/'
-
-    def test_db_conn(self):
-        pass
 
     def tokenize(self, tweet):
         tweet_ct = re.sub(r'\$(\w+)',r'ZZZCASHTAGZZZ\1',tweet)
@@ -41,49 +39,43 @@ class Parser:
                 tokens.append(token)
         return tokens if len(tokens) > 2 else []
 
-    def extract_features(self, inputFile):
-        pass
+class CFParser:
+    def __init__(self):
+        self.watchlist = './data/watchlist_clean.csv'
 
-    def build_wlist(self):
-        pass
+    def clean_csv(self):
+        df = pd.read_csv('./data/watchlists.csv', sep="\t", header=None)
+        pd.set_option('display.max_colwidth', -1)
+        df=df.replace({"&#39;":"'"}, regex=True)
+        # df[0] = df[0].apply(lambda x:str(x).replace(re.match('&#39;'),"'"))
+        df.to_csv('./data/watchlist_clean.csv', index=False, header=None)
+        # print(df[0].str.extract(r'(&#39;)', expand=False))
 
-    def db_insert(self):
-        client = pymongo.MongoClient("mongodb://localhost:27017/")
-        db = client["recsys"]
-        col = db["messages"]
-        # bulk = col.initialize_ordered_bulk_op()
+    def parse_wl(self):
+        pd.set_option('display.max_colwidth', -1)
+        df0 = pd.read_csv(self.watchlist, sep=";", header=None)
+        df = df0[0].str.split(';',expand=True)
+        df.columns = ["user_id", "content"]
+        return df
 
-        logging.basicConfig(filename=self.log_path+'database/insertion_'+str(datetime.now())+'.log',level=logging.INFO)
-        
-        for filename in self.files:
-            logging.info(str(datetime.now())+" - File: "+filename)
-            with open(self.path+filename) as inputFile:  
-                for line in inputFile:
-                    data = json.loads(line)
-                    # tokens = self.tokenize(data['data']['body'])
-                    # data['data']['tokens'] = tokens
-                    user = data['data'].pop('user')
-                    # user_id = user['id']
-                    # query = col.find({"id": user_id}, {"id": 1}).limit(1).count()
-                    
-                    # user['messages'] = [data]
+    def format_wl(self, df):
+        df_wl = pd.DataFrame(columns=['user_id'])
+        for row in df.itertuples():
+            content = json.loads(row.content[1:-1])
+            index = df_wl[(df_wl['user_id'] == row.user_id)].index.tolist()
+            if not index:
+                df_wl = df_wl.append({'user_id':row.user_id, ((content['group'], content['value'])):1}, ignore_index=True)
+            else:
+                if ((content['group'], content['value'])) not in df_wl:
+                    df_wl[((content['group'], content['value']))] = 0
+                # df_wl.ix[df_wl['user_id'] == row.user_id, ((content['group'], content['value']))] = 1
+                df_wl.loc[df_wl['user_id'] == row.user_id, ((content['group'], content['value']))] = 1
+        df_wl.fillna(0, inplace=True)
+        return df_wl
 
-                    # bulk.find({'id':user['id']}).upsert().update({ '$setOnInsert': {'username':user['username'], 'name':user['name'], 'join_date':user['join_date'], 'classification':user['classification'], 'followers':user['followers'], 'following':user['following'], 'ideas':user['ideas'], 'like_count':user['like_count'], 'subscribers_count':user['subscribers_count'], 'following_stocks':user['following_stocks'], 'location':user['location'], 'bio':user['bio'], 'trading_strategy':user['trading_strategy'], 'messages':[data]}})
-                    col.update_one({'id':user['id']},{ '$set': {'username':user['username'], 'name':user['name'], 'join_date':user['join_date'], 'classification':user['classification'], 'followers':user['followers'], 'following':user['following'], 'ideas':user['ideas'], 'like_count':user['like_count'], 'subscribers_count':user['subscribers_count'], 'following_stocks':user['following_stocks'], 'location':user['location'], 'bio':user['bio'], 'trading_strategy':user['trading_strategy']}, '$addToSet':{'messages':data}}, upsert=True)
-
-                    # if not query:
-                    #     user['messages'] = [data]
-                    #     col.insert_one(user)
-                    # else:
-                    #     col.update_one({'id': user_id}, {'$push': {'messages': data}})
-                    
-                    
-                    
-
-        # CLEAR LOG CONFIGS
-        for handler in logging.root.handlers[:]:
-            logging.root.removeHandler(handler)
 
 if __name__ == "__main__":
-    pd = Parser("/media/ntfs/st_2017/")
-    pd.db_insert()
+    cfp = CFParser()
+    #cfp.clean_csv()
+    df = cfp.parse_wl()
+    df_wl = cfp.format_wl(df)
