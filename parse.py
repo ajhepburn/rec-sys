@@ -62,16 +62,33 @@ class CFParser:
         df_wl = pd.DataFrame(columns=['user_id'])
         for row in df.itertuples():
             content = json.loads(row.content[1:-1])
-            index = df_wl[(df_wl['user_id'] == row.user_id)].index.tolist()
-            if not index:
-                df_wl = df_wl.append({'user_id':row.user_id, ((content['group'], content['value'])):1}, ignore_index=True)
-            else:
-                if ((content['group'], content['value'])) not in df_wl:
-                    df_wl[((content['group'], content['value']))] = 0
-                # df_wl.ix[df_wl['user_id'] == row.user_id, ((content['group'], content['value']))] = 1
-                df_wl.loc[df_wl['user_id'] == row.user_id, ((content['group'], content['value']))] = 1
-        df_wl.fillna(0, inplace=True)
+            df_wl = df_wl.append({'user_id':row.user_id, 'item_id':((content['group'], content['value']))}, ignore_index=True)
         return df_wl
+
+
+        # Commented below is code to format the dataset into one row per user, one-hot encoded
+
+        # df_wl = pd.DataFrame(columns=['user_id'])
+        # for row in df.itertuples():
+        #     content = json.loads(row.content[1:-1])
+        #     index = df_wl[(df_wl['user_id'] == row.user_id)].index.tolist()
+        #     if not index:
+        #         df_wl = df_wl.append({'user_id':row.user_id, ((content['group'], content['value'])):1}, ignore_index=True)
+        #     else:
+        #         if ((content['group'], content['value'])) not in df_wl:
+        #             df_wl[((content['group'], content['value']))] = 0
+        #         df_wl.loc[df_wl['user_id'] == row.user_id, ((content['group'], content['value']))] = 1
+        # df_wl.fillna(0, inplace=True)
+        # return df_wl
+
+    def analyse_df(self, df):
+        n_users = df.user_id.unique().shape[0]
+        n_items = df.item_id.unique().shape[0]
+
+        print('Number of users: {}'.format(n_users))
+        print('Number of watchlist items: {}'.format(n_items))
+        print('Sparsity: {:4.3f}%'.format(float(df.shape[0]) / float(n_users*n_items) * 100))
+
 
 
 if __name__ == "__main__":
@@ -79,3 +96,5 @@ if __name__ == "__main__":
     #cfp.clean_csv()
     df = cfp.parse_wl()
     df_wl = cfp.format_wl(df)
+    cfp.analyse_df(df_wl)
+    #cfp.surp(df_wl)
