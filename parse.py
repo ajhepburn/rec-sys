@@ -81,20 +81,42 @@ class CFParser:
         # df_wl.fillna(0, inplace=True)
         # return df_wl
 
-    def analyse_df(self, df):
+    def threshold_likes(self, df, user_id_min, item_id_min):
         n_users = df.user_id.unique().shape[0]
         n_items = df.item_id.unique().shape[0]
-
+        sparsity = float(df.shape[0]) / float(n_users*n_items) * 100
+        print("Starting likes info")
         print('Number of users: {}'.format(n_users))
         print('Number of watchlist items: {}'.format(n_items))
-        print('Sparsity: {:4.3f}%'.format(float(df.shape[0]) / float(n_users*n_items) * 100))
+        print('Sparsity: {:4.3f}%'.format(sparsity))
+        
+        done = False
+        while not done:
+            starting_shape = df.shape[0]
+            item_id_counts = df.groupby('user_id').item_id.count()
+            df = df[~df.user_id.isin(item_id_counts[item_id_counts < item_id_min].index.tolist())]
+            user_id_counts = df.groupby('item_id').user_id.count()
+            df = df[~df.item_id.isin(user_id_counts[user_id_counts < user_id_min].index.tolist())]
+            ending_shape = df.shape[0]
+            if starting_shape == ending_shape:
+                done = True
+        
+        assert(df.groupby('user_id').item_id.count().min() >= item_id_min)
+        assert(df.groupby('item_id').user_id.count().min() >= user_id_min)
+        
+        n_users = df.user_id.unique().shape[0]
+        n_items = df.item_id.unique().shape[0]
+        sparsity = float(df.shape[0]) / float(n_users*n_items) * 100
+        print('Ending likes info')
+        print('Number of users: {}'.format(n_users))
+        print('Number of models: {}'.format(n_items))
+        print('Sparsity: {:4.3f}%'.format(sparsity))
+        return df
 
 
 
 if __name__ == "__main__":
     cfp = CFParser()
-    #cfp.clean_csv()
     df = cfp.parse_wl()
     df_wl = cfp.format_wl(df)
-    cfp.analyse_df(df_wl)
-    #cfp.surp(df_wl)
+    df_wl = cfp.threshold_likes(df_wl, 2, 2)
