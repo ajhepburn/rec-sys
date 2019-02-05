@@ -1,6 +1,9 @@
-import os, sys, json, spacy, pymongo, pprint, logging, re, io
+import os, sys, json, spacy, pymongo, pprint, logging, re, io, glob, csv
 from datetime import timedelta, datetime
 import pandas as pd
+import numpy as np
+import scipy.sparse as sparse
+import implicit
 
 class CBParser:
     def __init__(self, fp):
@@ -39,7 +42,7 @@ class CBParser:
                 tokens.append(token)
         return tokens if len(tokens) > 2 else []
 
-class CFParser:
+class WLParser:
     def __init__(self):
         self.watchlist = './data/watchlist_clean.csv'
 
@@ -65,58 +68,41 @@ class CFParser:
             df_wl = df_wl.append({'user_id':row.user_id, 'item_id':((content['group'], content['value']))}, ignore_index=True)
         return df_wl
 
+class CashtagParser:
+    def __init__(self, fp):
+        self.rpath = fp
+        self.wpath = './data/csv/'
+        # self.files = [f for f in os.listdir(self.path) if os.path.isfile(os.path.join(self.path, f))]
+        # self.files.sort()
 
-        # Commented below is code to format the dataset into one row per user, one-hot encoded
+    def csv_write(self):
+        with open (os.path.join(self.wpath, 'user_features.csv'), 'w') as user_f, open (os.path.join(self.wpath, 'item_features.csv'), 'w') as item_f:
+            user_fieldnames, item_fieldnames = ['id', 'username', 'name', 'avatar_url', 'avatar_url_ssl', 'join_date', 'official', 'identity', 'classification', 'followers', 'following', 'ideas', 'watchlist_stocks_count', 'like_count', 'subscribers_count', 'subscribed_to_count', 'following_stocks', 'location', 'bio', 'website_url', 'trading_strategy'], ['body', 'created_at', 'source', 'symbols', 'prices', 'conversation', 'links', 'reshares', 'structurable','reshare_message', 'mentioned_users', 'entities', 'network','item_id', 'user_id']
+            uf_writer, if_writer = csv.DictWriter(user_f, fieldnames=user_fieldnames), csv.DictWriter(item_f, fieldnames=item_fieldnames)
+            uf_writer.writeheader()
+            if_writer.writeheader()
 
-        # df_wl = pd.DataFrame(columns=['user_id'])
-        # for row in df.itertuples():
-        #     content = json.loads(row.content[1:-1])
-        #     index = df_wl[(df_wl['user_id'] == row.user_id)].index.tolist()
-        #     if not index:
-        #         df_wl = df_wl.append({'user_id':row.user_id, ((content['group'], content['value'])):1}, ignore_index=True)
-        #     else:
-        #         if ((content['group'], content['value'])) not in df_wl:
-        #             df_wl[((content['group'], content['value']))] = 0
-        #         df_wl.loc[df_wl['user_id'] == row.user_id, ((content['group'], content['value']))] = 1
-        # df_wl.fillna(0, inplace=True)
-        # return df_wl
+            for filepath in glob.glob(os.path.join(self.rpath, '*.json')):
+                with open(filepath) as f:
+                    for line in f:
+                        content = json.loads(line)
+                        item = content['data']
+                        user = content['data'].pop('user')
+                        
+                        item['item_id'] = item.pop('id')
+                        item['user_id'] = user['id']
+                        
+                        uf_writer.writerow(user)
+                        if_writer.writerow(item)
+                        
 
-    def threshold_likes(self, df, user_id_min, item_id_min):
-        n_users = df.user_id.unique().shape[0]
-        n_items = df.item_id.unique().shape[0]
-        sparsity = float(df.shape[0]) / float(n_users*n_items) * 100
-        print("Starting likes info")
-        print('Number of users: {}'.format(n_users))
-        print('Number of watchlist items: {}'.format(n_items))
-        print('Sparsity: {:4.3f}%'.format(sparsity))
-        
-        done = False
-        while not done:
-            starting_shape = df.shape[0]
-            item_id_counts = df.groupby('user_id').item_id.count()
-            df = df[~df.user_id.isin(item_id_counts[item_id_counts < item_id_min].index.tolist())]
-            user_id_counts = df.groupby('item_id').user_id.count()
-            df = df[~df.item_id.isin(user_id_counts[user_id_counts < user_id_min].index.tolist())]
-            ending_shape = df.shape[0]
-            if starting_shape == ending_shape:
-                done = True
-        
-        assert(df.groupby('user_id').item_id.count().min() >= item_id_min)
-        assert(df.groupby('item_id').user_id.count().min() >= user_id_min)
-        
-        n_users = df.user_id.unique().shape[0]
-        n_items = df.item_id.unique().shape[0]
-        sparsity = float(df.shape[0]) / float(n_users*n_items) * 100
-        print('Ending likes info')
-        print('Number of users: {}'.format(n_users))
-        print('Number of models: {}'.format(n_items))
-        print('Sparsity: {:4.3f}%'.format(sparsity))
-        return df
+                
 
 
 
 if __name__ == "__main__":
-    cfp = CFParser()
-    df = cfp.parse_wl()
-    df_wl = cfp.format_wl(df)
-    df_wl = cfp.threshold_likes(df_wl, 2, 2)
+    # wlp = WLParser()
+    # df = wlp.parse_wl()
+    # df_wl = wlp.format_wl(df)
+    ctp = CashtagParser('/media/ntfs/st_2017')
+    ctp.csv_write()
