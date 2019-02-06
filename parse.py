@@ -46,7 +46,7 @@ class CBParser:
 
 class WLParser:
     def __init__(self):
-        self.watchlist = './data/watchlist_clean.csv'
+        self.watchlist = './data/csv/watchlist_clean.csv'
 
     def clean_csv(self):
         df = pd.read_csv('./data/watchlists.csv', sep="\t", header=None)
@@ -78,11 +78,11 @@ class CFParser:
         # self.files = [f for f in os.listdir(self.path) if os.path.isfile(os.path.join(self.path, f))]
         # self.files.sort()
 
-    def csv_write(self):
+    def csv_write(self, wl_data):
         logging.basicConfig(filename=os.path.join(self.logpath, str(datetime.now())[:-7]+'_log (cashtag_csv).log'),level=logging.INFO)
         logging.info("Starting CSV write at "+str(datetime.now())[:-7])
         with open (os.path.join(self.wpath, 'user_features.csv'), 'w', encoding='UTF-8', newline='') as user_f, open (os.path.join(self.wpath, 'item_features.csv'), 'w', encoding='UTF-8', newline='') as item_f:
-            item_fields, user_fields = ('item_id', 'user_id', 'body', 'created_at', 'ct_id', 'ct_symbol', 'ct_title', 'ct_exchange','ct_sector','ct_industry','ct_trending_score', 'ct_watchlist_count'), ('id', 'username', 'join_date', 'followers', 'following', 'ideas', 'like_count', 'subscribers_count', 'subscribed_to_count', 'location')
+            item_fields, user_fields = ('item_id', 'user_id', 'body', 'created_at', 'ct_id', 'ct_symbol', 'ct_title', 'ct_exchange','ct_sector','ct_industry','ct_trending_score', 'ct_watchlist_count'), ('id', 'username', 'join_date', 'followers', 'following', 'ideas', 'like_count', 'subscribers_count', 'subscribed_to_count', 'location', 'wt_id', 'wt_type', 'wt_group', 'wt_value', 'wt_display')
             uf_writer, if_writer = csv.DictWriter(user_f, fieldnames=user_fields, delimiter="\t"), csv.DictWriter(item_f, fieldnames=item_fields, delimiter="\t")
             uf_writer.writeheader()
             if_writer.writeheader()
@@ -97,16 +97,25 @@ class CFParser:
                             continue
                         user_in = content['data'].pop('user')
                         
+                        wl = wl_data['content'][wl_data['user_id'].astype(str) == str(user_in['id'])].values
+                        if len(wl) > 0: 
+                            for wl_item in wl:
+                                user = {k: user_in[k] for k in user_fields if k in user_in}
+                                u_headers = [item[3:] for item in user_fields if item.startswith('wt_')]
+                                for k in u_headers:
+                                    item = json.loads(wl_item[1:-1])
+                                    user['wt_'+k] = (item['group'], item['value']) if k == 'id' else item[k]
+                        else:
+                            user = {k: user_in[k] for k in user_fields if k in user_in}
+                        uf_writer.writerow(user)
+                        
                         item_in['item_id'] = item_in.pop('id')
                         item_in['user_id'] = user_in['id']
 
-                        user = {k: user_in[k] for k in user_fields if k in user_in}
-                        uf_writer.writerow(user)
-
                         for symbol in item_in['symbols']:
                             item = {k: item_in[k] for k in item_fields if k in item_in}
-                            headers = list(set(item_fields) - set(item_in.keys()))
-                            for k in list(map(lambda x: x[3:],headers)):
+                            i_headers = [item[3:] for item in item_fields if item.startswith('ct_')]
+                            for k in i_headers:
                                 item["ct_"+k] = symbol[k]
                                 item['body'] = item['body'].replace('\t',' ')
                                 if_writer.writerow(item)
@@ -171,8 +180,8 @@ class CFParser:
 
 
 if __name__ == "__main__":
-    # wlp = WLParser()
-    # df = wlp.parse_wl()
+    wlp = WLParser()
+    df = wlp.parse_wl()
     # df_wl = wlp.format_wl(df)
     ctp = CFParser('/media/ntfs/st_2017')
-    ctp.csv_write()
+    ctp.csv_write(df)
