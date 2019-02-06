@@ -1,9 +1,10 @@
-import os, sys, json, spacy, pymongo, pprint, logging, re, io, glob, csv
+import os, sys, json, spacy, pymongo, pprint, logging, re, io, glob, csv, logging
 from datetime import timedelta, datetime
 import pandas as pd
 import numpy as np
 import scipy.sparse as sparse
 import implicit
+from itertools import islice
 
 class CBParser:
     def __init__(self, fp):
@@ -68,22 +69,26 @@ class WLParser:
             df_wl = df_wl.append({'user_id':row.user_id, 'item_id':((content['group'], content['value']))}, ignore_index=True)
         return df_wl
 
-class CashtagParser:
+class CFParser:
     def __init__(self, fp):
         self.rpath = fp
         self.wpath = './data/csv/'
+        self.logpath = './log/io/'
         # self.files = [f for f in os.listdir(self.path) if os.path.isfile(os.path.join(self.path, f))]
         # self.files.sort()
 
     def csv_write(self):
+        logging.basicConfig(filename=os.path.join(self.logpath, str(datetime.now())[:-7]+'_log (cashtag_csv).log'),level=logging.INFO)
+        logging.info("Starting CSV write at "+str(datetime.now())[:-7])
         with open (os.path.join(self.wpath, 'user_features.csv'), 'w') as user_f, open (os.path.join(self.wpath, 'item_features.csv'), 'w') as item_f:
-            user_fieldnames, item_fieldnames = ['id', 'username', 'name', 'avatar_url', 'avatar_url_ssl', 'join_date', 'official', 'identity', 'classification', 'followers', 'following', 'ideas', 'watchlist_stocks_count', 'like_count', 'subscribers_count', 'subscribed_to_count', 'following_stocks', 'location', 'bio', 'website_url', 'trading_strategy'], ['body', 'created_at', 'source', 'symbols', 'prices', 'conversation', 'links', 'reshares', 'structurable','reshare_message', 'mentioned_users', 'entities', 'network','item_id', 'user_id']
+            user_fieldnames, item_fieldnames = ['id', 'username', 'name', 'avatar_url', 'avatar_url_ssl', 'join_date', 'official', 'identity', 'classification', 'followers', 'following', 'ideas', 'watchlist_stocks_count', 'like_count', 'subscribers_count', 'subscribed_to_count', 'following_stocks', 'location', 'bio', 'website_url', 'trading_strategy'], ['item_id', 'user_id', 'body', 'created_at', 'source', 'conversation', 'symbols', 'prices', 'reshares', 'mentioned_users', 'entities', 'links', 'sentiment', 'network','structurable','reshare_message', 'likes', 'disclosure']
             uf_writer, if_writer = csv.DictWriter(user_f, fieldnames=user_fieldnames), csv.DictWriter(item_f, fieldnames=item_fieldnames)
             uf_writer.writeheader()
             if_writer.writeheader()
 
             for filepath in glob.glob(os.path.join(self.rpath, '*.json')):
                 with open(filepath) as f:
+                    logging.info("Read: "+filepath)
                     for line in f:
                         content = json.loads(line)
                         item = content['data']
@@ -94,6 +99,31 @@ class CashtagParser:
                         
                         uf_writer.writerow(user)
                         if_writer.writerow(item)
+        logging.info("Finished CSV write at "+str(datetime.now())[:-7])
+
+        for handler in logging.root.handlers[:]:
+            logging.root.removeHandler(handler)
+
+    def extract_features(self, feature):
+        
+        if not feature == 'user' and not feature == 'item':
+            raise Exception("Unrecognised Features Type: "+feature)
+        
+        ffile = os.path.join(self.wpath, feature+'_features.csv')
+        if not os.path.isfile(ffile):
+            raise Exception("Missing Features File")
+
+        def extract_user_features(dr):
+            for line in islice(dr, 1):
+                print(json.dumps(line, indent=4))
+
+        def extract_item_features(dr):
+            for line in islice(dr, 1):
+                print(json.dumps(line, indent=4))
+        
+        dr = csv.DictReader(open(ffile),delimiter=",")
+        locals()["extract_"+feature+"_features"](dr)
+
                         
 
                 
@@ -104,5 +134,5 @@ if __name__ == "__main__":
     # wlp = WLParser()
     # df = wlp.parse_wl()
     # df_wl = wlp.format_wl(df)
-    ctp = CashtagParser('/media/ntfs/st_2017')
-    ctp.csv_write()
+    ctp = CFParser('/media/ntfs/st_2017')
+    ctp.extract_features('item')
