@@ -5,6 +5,7 @@ import numpy as np
 import scipy.sparse as sparse
 import implicit
 from itertools import islice
+import dask.dataframe as dd
 
 class CBParser:
     def __init__(self, fp):
@@ -80,9 +81,9 @@ class CFParser:
     def csv_write(self):
         logging.basicConfig(filename=os.path.join(self.logpath, str(datetime.now())[:-7]+'_log (cashtag_csv).log'),level=logging.INFO)
         logging.info("Starting CSV write at "+str(datetime.now())[:-7])
-        with open (os.path.join(self.wpath, 'user_features.csv'), 'w') as user_f, open (os.path.join(self.wpath, 'item_features.csv'), 'w') as item_f:
-            user_fieldnames, item_fieldnames = ['id', 'username', 'name', 'avatar_url', 'avatar_url_ssl', 'join_date', 'official', 'identity', 'classification', 'followers', 'following', 'ideas', 'watchlist_stocks_count', 'like_count', 'subscribers_count', 'subscribed_to_count', 'following_stocks', 'location', 'bio', 'website_url', 'trading_strategy'], ['item_id', 'user_id', 'body', 'created_at', 'source', 'conversation', 'symbols', 'prices', 'reshares', 'mentioned_users', 'entities', 'links', 'sentiment', 'network','structurable','reshare_message', 'likes', 'disclosure']
-            uf_writer, if_writer = csv.DictWriter(user_f, fieldnames=user_fieldnames), csv.DictWriter(item_f, fieldnames=item_fieldnames)
+        with open (os.path.join(self.wpath, 'user_features.csv'), 'w', encoding='UTF-8', newline='') as user_f, open (os.path.join(self.wpath, 'item_features.csv'), 'w', encoding='UTF-8', newline='') as item_f:
+            item_fields, user_fields = ('item_id', 'user_id', 'body', 'created_at', 'ct_id', 'ct_symbol', 'ct_title', 'ct_exchange','ct_sector','ct_industry','ct_trending_score', 'ct_watchlist_count'), ('id', 'username', 'join_date', 'followers', 'following', 'ideas', 'like_count', 'subscribers_count', 'subscribed_to_count', 'location')
+            uf_writer, if_writer = csv.DictWriter(user_f, fieldnames=user_fields, delimiter="\t"), csv.DictWriter(item_f, fieldnames=item_fields, delimiter="\t")
             uf_writer.writeheader()
             if_writer.writeheader()
 
@@ -91,21 +92,60 @@ class CFParser:
                     logging.info("Read: "+filepath)
                     for line in f:
                         content = json.loads(line)
-                        item = content['data']
-                        user = content['data'].pop('user')
+                        item_in = content['data']
+                        if 'symbols' not in item_in:
+                            continue
+                        user_in = content['data'].pop('user')
                         
-                        item['item_id'] = item.pop('id')
-                        item['user_id'] = user['id']
-                        
+                        item_in['item_id'] = item_in.pop('id')
+                        item_in['user_id'] = user_in['id']
+
+                        user = {k: user_in[k] for k in user_fields if k in user_in}
                         uf_writer.writerow(user)
-                        if_writer.writerow(item)
+
+                        for symbol in item_in['symbols']:
+                            item = {k: item_in[k] for k in item_fields if k in item_in}
+                            headers = list(set(item_fields) - set(item_in.keys()))
+                            for k in list(map(lambda x: x[3:],headers)):
+                                item["ct_"+k] = symbol[k]
+                                item['body'] = item['body'].replace('\t',' ')
+                                if_writer.writerow(item)
+
         logging.info("Finished CSV write at "+str(datetime.now())[:-7])
 
         for handler in logging.root.handlers[:]:
             logging.root.removeHandler(handler)
 
+    # def remove_null_byte_csv(self, f):
+    #     ifile = os.path.join(self.wpath, f)
+    #     with open (os.path.join(self.wpath, 'item_features_nonull.csv'), 'w') as item_f:
+    #         headers = ['item_id', 'user_id', 'body', 'created_at', 'symbols']
+    #         if_writer = csv.DictWriter(item_f, fieldnames=headers)
+    #         if_writer.writeheader()
+
+    #         data_initial = open(ifile, "rb")
+    #         data = csv.reader((line.replace(b'\0','') for line in data_initial), delimiter=",")
+    #         for row in data:
+    #             if_writer.writerow(row)
+
+
+    # def clean_items_csv(self, f):
+    #     ifile = os.path.join(self.wpath, f)
+    #     if not os.path.isfile(ifile):
+    #         raise Exception("Missing CSV File")
+
+    #     with open(ifile, 'r') as f:
+    #         d_reader = csv.DictReader(f)
+    #         headers = d_reader.fieldnames
+
+    #     kept_cols = [i for i,x in enumerate(headers) if x in ('item_id', 'user_id', 'body', 'created_at', 'symbols')]
+
+    #     df = dd.read_csv(ifile, usecols=kept_cols, engine='python', verbose =True , warn_bad_lines = True, error_bad_lines=False)
+    #     # df = dd.read_csv(ifile, usecols=kept_cols, engine='c', quoting=csv.QUOTE_NONE, lineterminator='\n', error_bad_lines=False, encoding='utf8')
+    #     df = df[df.symbols == df.symbols]
+    #     df.to_csv('data/csv/ct_item_features-*.csv')
+
     def extract_features(self, feature):
-        
         if not feature == 'user' and not feature == 'item':
             raise Exception("Unrecognised Features Type: "+feature)
         
@@ -135,4 +175,4 @@ if __name__ == "__main__":
     # df = wlp.parse_wl()
     # df_wl = wlp.format_wl(df)
     ctp = CFParser('/media/ntfs/st_2017')
-    ctp.extract_features('item')
+    ctp.csv_write()
