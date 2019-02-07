@@ -8,7 +8,7 @@ from itertools import islice
 import dask.dataframe as dd
 
 class CBParser:
-    def __init__(self, fp):
+    def __init__(self, fp: str):
         if not os.path.isdir(fp):
             raise OSError('ERROR: Directory does not exist.')
         self.path = fp
@@ -20,7 +20,7 @@ class CBParser:
         self.nlp = spacy.load('en')
         self.log_path = './log/'
 
-    def tokenize(self, tweet):
+    def tokenize(self, tweet: str) -> list:
         tweet_ct = re.sub(r'\$(\w+)',r'ZZZCASHTAGZZZ\1',tweet)
         tweet_ct = re.sub(r'&#39;s', r"", tweet_ct)
         tweet_ct = re.sub(r'&#39;', r"'", tweet_ct)
@@ -44,41 +44,22 @@ class CBParser:
                 tokens.append(token)
         return tokens if len(tokens) > 2 else []
 
-class WLParser:
-    def __init__(self):
-        self.watchlist = './data/csv/watchlist_clean.csv'
-
-    def clean_csv(self):
-        df = pd.read_csv('./data/watchlists.csv', sep="\t", header=None)
-        pd.set_option('display.max_colwidth', -1)
-        df=df.replace({"&#39;":"'"}, regex=True)
-        # df[0] = df[0].apply(lambda x:str(x).replace(re.match('&#39;'),"'"))
-        df.to_csv('./data/watchlist_clean.csv', index=False, header=None)
-        # print(df[0].str.extract(r'(&#39;)', expand=False))
-
-    def parse_wl(self):
+class CFParser:
+    def __init__(self, fp: str):
+        self.rpath = fp
+        self.wpath = './data/csv/'
+        self.logpath = './log/io/'
+        self.watchlist = self.wpath+'watchlist_clean.csv'
+        
+    def parse_wl(self) -> pd.core.frame.DataFrame:
         pd.set_option('display.max_colwidth', -1)
         df0 = pd.read_csv(self.watchlist, sep=";", header=None)
         df = df0[0].str.split(';',expand=True)
         df.columns = ["user_id", "content"]
         return df
 
-    def format_wl(self, df):
-        df_wl = pd.DataFrame(columns=['user_id'])
-        for row in df.itertuples():
-            content = json.loads(row.content[1:-1])
-            df_wl = df_wl.append({'user_id':row.user_id, 'item_id':((content['group'], content['value']))}, ignore_index=True)
-        return df_wl
-
-class CFParser:
-    def __init__(self, fp):
-        self.rpath = fp
-        self.wpath = './data/csv/'
-        self.logpath = './log/io/'
-        # self.files = [f for f in os.listdir(self.path) if os.path.isfile(os.path.join(self.path, f))]
-        # self.files.sort()
-
-    def csv_write(self, wl_data):
+    def csv_write(self, wl_data: pd.core.frame.DataFrame):
+        if os.path.exists(os.path.join(self.wpath, 'user_features.csv')) and os.path.exists(os.path.join(self.wpath, 'user_features.csv')): raise Exception("User/Item Features Already Exist! Exiting...")
         logging.basicConfig(filename=os.path.join(self.logpath, str(datetime.now())[:-7]+'_log (cashtag_csv).log'),level=logging.INFO)
         logging.info("Starting CSV write at "+str(datetime.now())[:-7])
         with open (os.path.join(self.wpath, 'user_features.csv'), 'w', encoding='UTF-8', newline='') as user_f, open (os.path.join(self.wpath, 'item_features.csv'), 'w', encoding='UTF-8', newline='') as item_f:
@@ -125,36 +106,7 @@ class CFParser:
         for handler in logging.root.handlers[:]:
             logging.root.removeHandler(handler)
 
-    # def remove_null_byte_csv(self, f):
-    #     ifile = os.path.join(self.wpath, f)
-    #     with open (os.path.join(self.wpath, 'item_features_nonull.csv'), 'w') as item_f:
-    #         headers = ['item_id', 'user_id', 'body', 'created_at', 'symbols']
-    #         if_writer = csv.DictWriter(item_f, fieldnames=headers)
-    #         if_writer.writeheader()
-
-    #         data_initial = open(ifile, "rb")
-    #         data = csv.reader((line.replace(b'\0','') for line in data_initial), delimiter=",")
-    #         for row in data:
-    #             if_writer.writerow(row)
-
-
-    # def clean_items_csv(self, f):
-    #     ifile = os.path.join(self.wpath, f)
-    #     if not os.path.isfile(ifile):
-    #         raise Exception("Missing CSV File")
-
-    #     with open(ifile, 'r') as f:
-    #         d_reader = csv.DictReader(f)
-    #         headers = d_reader.fieldnames
-
-    #     kept_cols = [i for i,x in enumerate(headers) if x in ('item_id', 'user_id', 'body', 'created_at', 'symbols')]
-
-    #     df = dd.read_csv(ifile, usecols=kept_cols, engine='python', verbose =True , warn_bad_lines = True, error_bad_lines=False)
-    #     # df = dd.read_csv(ifile, usecols=kept_cols, engine='c', quoting=csv.QUOTE_NONE, lineterminator='\n', error_bad_lines=False, encoding='utf8')
-    #     df = df[df.symbols == df.symbols]
-    #     df.to_csv('data/csv/ct_item_features-*.csv')
-
-    def extract_features(self, feature):
+    def extract_features(self, feature: str):
         if not feature == 'user' and not feature == 'item':
             raise Exception("Unrecognised Features Type: "+feature)
         
@@ -162,15 +114,15 @@ class CFParser:
         if not os.path.isfile(ffile):
             raise Exception("Missing Features File")
 
-        def extract_user_features(dr):
+        def extract_user_features(dr: str):
             for line in islice(dr, 1):
                 print(json.dumps(line, indent=4))
 
-        def extract_item_features(dr):
+        def extract_item_features(dr: csv.DictReader):
             for line in islice(dr, 1):
                 print(json.dumps(line, indent=4))
         
-        dr = csv.DictReader(open(ffile),delimiter=",")
+        dr = csv.DictReader(open(ffile),delimiter='\t')
         locals()["extract_"+feature+"_features"](dr)
 
                         
@@ -180,8 +132,5 @@ class CFParser:
 
 
 if __name__ == "__main__":
-    wlp = WLParser()
-    df = wlp.parse_wl()
-    # df_wl = wlp.format_wl(df)
     ctp = CFParser('/media/ntfs/st_2017')
-    ctp.csv_write(df)
+    ctp.extract_features('user')
