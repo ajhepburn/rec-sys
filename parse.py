@@ -4,7 +4,6 @@ import pandas as pd
 import numpy as np
 import scipy.sparse as sparse
 import implicit
-from itertools import islice
 import dask.dataframe as dd
 
 class CBParser:
@@ -106,31 +105,6 @@ class CFParser:
         for handler in logging.root.handlers[:]:
             logging.root.removeHandler(handler)
 
-    def extract_features(self, feature: str):
-        if not feature == 'user' and not feature == 'item':
-            raise Exception("Unrecognised Features Type: "+feature)
-        
-        ffile = os.path.join(self.wpath, feature+'_features.csv')
-        if not os.path.isfile(ffile):
-            raise Exception("Missing Features File")
-
-        def extract_user_features(dr: str):
-            for line in islice(dr, 1):
-                print(json.dumps(line, indent=4))
-
-        def extract_item_features(dr: csv.DictReader):
-            for line in islice(dr, 1):
-                print(json.dumps(line, indent=4))
-        
-        dr = csv.DictReader(open(ffile),delimiter='\t')
-        locals()["extract_"+feature+"_features"](dr)
-
-                        
-
-                
-
-
 
 if __name__ == "__main__":
-    ctp = CFParser('/media/ntfs/st_2017')
-    ctp.extract_features('user')
+    pass
