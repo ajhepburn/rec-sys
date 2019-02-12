@@ -1,4 +1,4 @@
-import os, sys, json, spacy, pymongo, pprint, logging, re, io, glob, csv, logging
+import os, sys, json, spacy, pymongo, pprint, logging, re, io, glob, csv, logging, codecs
 from datetime import timedelta, datetime
 import pandas as pd
 import numpy as np
@@ -104,7 +104,55 @@ class CFParser:
 
         for handler in logging.root.handlers[:]:
             logging.root.removeHandler(handler)
+    
+    # def parse_interactions(self):
+    #     # item_features = csv.DictReader(open(os.path.join(self.wpath, 'item_features.csv')), delimiter='\t')
+
+    #     if os.path.exists(os.path.join(self.wpath, 'interaction_data.csv')): raise Exception('Interaction Data Already Exists, Exiting...')
+    #     logging.basicConfig(filename=os.path.join(self.logpath, str(datetime.now())[:-7]+'_log (interactions_csv).log'),level=logging.INFO)
+    #     logging.info("Starting CSV write at "+str(datetime.now())[:-7])
+    #     with open(os.path.join(self.wpath, 'item_features.csv'), 'rU') as item_features, open (os.path.join(self.wpath, 'interaction_data.csv'), 'w', encoding='UTF-8', newline='') as idata:
+    #         fields = ('user_id', 'item_id')
+    #         writer = csv.DictWriter(idata, fieldnames=fields, delimiter="\t")
+    #         writer.writeheader()
+
+    #         # for entry in item_features:
+    #         for row in csv.DictReader((line.replace('\0','') for line in item_features), delimiter="\t"):
+    #             writer.writerow({'user_id':row['user_id'], 'item_id':row['item_id']})
+
+    #     logging.info("Finished CSV write at "+str(datetime.now())[:-7])
+    #     for handler in logging.root.handlers[:]:
+    #         logging.root.removeHandler(handler)
+
+    def parse_stocktwits_data(self):
+        logging.basicConfig(filename=os.path.join(self.logpath, str(datetime.now())[:-7]+'_log (stocktwits_csv).log'),level=logging.INFO)
+        logging.info("Starting CSV write at "+str(datetime.now())[:-7])
+
+        with open (os.path.join(self.wpath, 'stocktwits.csv'), 'w', newline='') as stocktwits_csv:
+            fields = ['user_id', 'item_id', 'item_cashtags']
+            writer = csv.DictWriter(stocktwits_csv, fieldnames=fields, delimiter='\t')
+            writer.writeheader()
+
+            for filepath in glob.glob(os.path.join(self.rpath, "*")):
+                with open(filepath) as f:
+                    logging.info("Read: "+filepath)
+                    for line in f:
+                        content = json.loads(line)['data']
+                        if 'symbols' not in content: continue
+                        user_id = content['user']['id']
+                        item_id = content['id']
+                        cashtags = []
+                        for symbol in content['symbols']:
+                            cashtags.append(symbol['symbol'])
+                        writer.writerow({'user_id':user_id, 'item_id':item_id, 'item_cashtags':cashtags})
+
+        logging.info("Finished CSV write at "+str(datetime.now())[:-7])
+
+        for handler in logging.root.handlers[:]:
+            logging.root.removeHandler(handler)
 
 
 if __name__ == "__main__":
-    pass
+    cfp = CFParser('/media/ntfs/st_2017/')
+    cfp.parse_stocktwits_data()
+    # cfp.parse_interactions()

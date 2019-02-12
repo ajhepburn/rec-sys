@@ -1,30 +1,39 @@
-import json, csv
-from os.path import join, isfile
+import json, csv, sys
+from os.path import join, isfile, exists
 from itertools import islice
+from lightfm.data import Dataset
+from lightfm import LightFM
 
 class CFModels:
     def __init__(self):
         self.csvpath = './data/csv/'
 
-    def extract_features(self, feature: str):
-        if feature not in ('user', 'item'):
-            raise Exception("Unrecognised Features Type: "+feature)
-        
-        ffile = join(self.csvpath, feature+'_features.csv')
-        if not isfile(ffile):
-            raise Exception("Missing Features File")
+    def get_data(self):
+        stocktwits = join(self.csvpath, 'stocktwits.csv')
+        if not exists(stocktwits): raise Exception('Missing Stocktwits File')
+        return csv.DictReader(open(stocktwits), delimiter='\t')
 
-        def extract_user_features(dr: csv.DictReader):
-            for line in islice(dr, 1):
-                print(json.dumps(line, indent=4))
+    def build_dataset(self):
+        dataset = Dataset()
+        dataset.fit((x['user_id'] for x in self.get_data()),
+                    (x['item_id'] for x in self.get_data()),
+                    item_features=(x['item_cashtags'] for x in self.get_data()))
 
-        def extract_item_features(dr: csv.DictReader):
-            for line in islice(dr, 1):
-                print(json.dumps(line, indent=4))
-        
-        dr = csv.DictReader(open(ffile),delimiter='\t')
-        locals()["extract_"+feature+"_features"](dr)
+        num_users, num_items = dataset.interactions_shape()
+        print('Model Fitting Complete\n','Num users: {}, num_items {}.'.format(num_users, num_items))
+ 
+        (interactions, weights) = dataset.build_interactions(((x['user_id'], x['item_id'])
+                                                      for x in self.get_data()))
+
+        item_features = dataset.build_item_features(((x['item_id'], [x['item_cashtags']])
+                                              for x in self.get_data()))
+        return interactions, item_features
+
+    def run(self, lf):
+        interactions, item_features = self.build_dataset()
+        model = LightFM(loss=lf)
+        model.fit(interactions, item_features=item_features)
 
 if __name__ == "__main__":
     cfm = CFModels()
-    cfm.extract_features('user')
+    cfm.run('bpr')
