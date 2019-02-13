@@ -135,6 +135,7 @@ class CFParser:
 
             for filepath in glob.glob(os.path.join(self.rpath, "*")):
                 with open(filepath) as f:
+                    if filepath.endswith('2017_02_01'): break
                     logging.info("Read: "+filepath)
                     for line in f:
                         content = json.loads(line)['data']
