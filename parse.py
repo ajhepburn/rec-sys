@@ -35,19 +35,20 @@ class AttributeParser:
 
         d = json.loads(l)['data']
         symbols = d.get('symbols', False)
-        industries, cashtags = [], []
+        industries, sectors, cashtags = [], [], []
 
         if symbols:                     # Checks to see if cashtags exist in tweet
             for s in symbols:
-                industry = s.get('industry')    # Check to see if a cashtag contains an 'Industry' tag, otherwise skip
+                industry, sector = s.get('industry'), s.get('sector')  # Check to see if a cashtag contains an 'Industry' tag, otherwise skip
                 if not industry:
                     continue
 
-                uid, iid, ii, ic = d['user']['id'], d['id'], industry, s['symbol']
+                uid, uloc, iid, ii, isec, ic = d['user']['id'], d['user']['location'],d['id'], industry, sector, s['symbol']
                 industries.append(ii)
+                sectors.append(isec)
                 cashtags.append(ic)
 
-        return (uid, iid, industries, cashtags) if industries else ((None),)*4
+        return (uid, uloc, iid, industries, sectors, cashtags) if industries else ((None),)*6
                  
     def file_writer(self):
         """ Responsible for writing to ct_industry.csv in ./data/csv/ and logging each file read.
@@ -58,10 +59,11 @@ class AttributeParser:
 
         logger = logging.getLogger()
 
-        with open (os.path.join(self.wpath, 'ct_industry.csv'), 'w', newline='') as stocktwits_csv:
-            fields = ['user_id', 'item_id', 'item_industries','item_cashtags']
+        with open (os.path.join(self.wpath, 'metadata.csv'), 'w', newline='') as stocktwits_csv:
+            fields = ['user_id', 'location','item_id', 'item_industries','item_sectors','item_cashtags']
             writer = csv.DictWriter(stocktwits_csv, fieldnames=fields, delimiter='\t')
             writer.writeheader()
+            line_count = 0
 
             for fp in self.files:
                 logger.info('Reading file {0}'.format(fp))
@@ -69,8 +71,11 @@ class AttributeParser:
                     for l in f:
                         if not all(self.parse(l)):
                             continue
-                        uid, iid, ii, ic = self.parse(l)
-                        writer.writerow({'user_id':uid, 'item_id':iid, 'item_industries':ii,'item_cashtags':ic})
+                        uid, uloc, iid, ii, isec, ic = self.parse(l)
+                        writer.writerow({'user_id':uid, 'location':uloc,'item_id':iid, 'item_industries':ii,'item_sectors':isec,'item_cashtags':ic})
+                        line_count+=1
+        
+        return line_count
 
 
 
@@ -79,13 +84,13 @@ class AttributeParser:
         logger = logging.getLogger()
         logger.info("Starting CSV write")
 
-        self.file_writer()
+        line_count = self.file_writer()
 
-        logger.info("Finished CSV write")
+        logger.info("Finished CSV write with {0} documents".format(line_count))
 
 
 
 
 if __name__ == "__main__":
-    ab = AttributeParser('2017_07_01')
+    ab = AttributeParser('2017_02_01')
     ab.run()
