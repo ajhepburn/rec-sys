@@ -72,6 +72,7 @@ class AttributeParser:
                         if not all(self.parse(l)):
                             continue
                         uid, uloc, iid, ii, isec, ic = self.parse(l)
+                        # ii, isec, ic = "|".join(ii), "|".join(isec), "|".join(ic)
                         writer.writerow({'user_id':uid, 'location':uloc,'item_id':iid, 'item_industries':ii,'item_sectors':isec,'item_cashtags':ic})
                         line_count+=1
         
@@ -92,5 +93,5 @@ class AttributeParser:
 
 
 if __name__ == "__main__":
-    ab = AttributeParser('2017_02_01')
+    ab = AttributeParser('2017_01_15')
     ab.run()
