@@ -13,6 +13,10 @@ class AttributeParser:
         self.files = self.files[:next(self.files.index(x) for x in self.files if x.endswith(limit))]
 
     def logger(self):
+        """ Sets the logger configuration to report to both std.out and to log to ./log/io/
+        Also sets the formatting instructions for the log file, prints Time, Current Thread, Logging Type, Message.
+
+        """
         logging.basicConfig(
                 level=logging.INFO,
                 format="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s",
@@ -21,26 +25,37 @@ class AttributeParser:
                     logging.StreamHandler(sys.stdout)
                 ])
     
-    def parse(self, l):
+    def parse(self, l) -> tuple:
+        """ Takes in a single line and attempts to retrieve User ID, Item ID, list of Industry Tags, list of Cashtags.
+        Will return a tuple filled with None values if:
+            * No cashtags are found with at least one industry tag.
+        If there are no cashtags at all in a single tweet, the line will be skipped.
+
+        """
+
         d = json.loads(l)['data']
         symbols = d.get('symbols', False)
         industries, cashtags = [], []
 
-        if not symbols:                     # Checks to see if cashtags exist in tweet
-            return ((None),)*4
-        for s in symbols:
-            industry = s.get('industry')    # Check to see if a cashtag contains an 'Industry' tag, otherwise skip
-            if not industry:
-                continue
+        if symbols:                     # Checks to see if cashtags exist in tweet
+            for s in symbols:
+                industry = s.get('industry')    # Check to see if a cashtag contains an 'Industry' tag, otherwise skip
+                if not industry:
+                    continue
 
-            uid, iid, ii, ic = d['user']['id'], d['id'], industry, s['symbol']
-            industries.append(ii)
-            cashtags.append(ic)
+                uid, iid, ii, ic = d['user']['id'], d['id'], industry, s['symbol']
+                industries.append(ii)
+                cashtags.append(ic)
 
         return (uid, iid, industries, cashtags) if industries else ((None),)*4
-
-                        
+                 
     def file_writer(self):
+        """ Responsible for writing to ct_industry.csv in ./data/csv/ and logging each file read.
+        Passes single line into self.parse which returns a tuple of metadata, this is then written
+        to a single row in the CSV, provided the tuple returned by self.parse does not contain any None values.
+
+        """
+
         logger = logging.getLogger()
 
         with open (os.path.join(self.wpath, 'ct_industry.csv'), 'w', newline='') as stocktwits_csv:
@@ -67,8 +82,6 @@ class AttributeParser:
         self.file_writer()
 
         logger.info("Finished CSV write")
-
-        
 
 
 
