@@ -6,6 +6,7 @@ __pycache__
 model.bin
 model_sm.bin
 doc2vec.html
+parse_old.py
 
 word2vecReader.py
 word2vecReaderUtils.py

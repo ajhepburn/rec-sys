@@ -1,14 +1,21 @@
-import json, csv, sys, time
+import json, csv, sys, time, os, torch, logging, logging.handlers
 from os.path import join, isfile, exists
 from itertools import islice
+from datetime import datetime
+import numpy as np
+
 from lightfm.data import Dataset
 from lightfm.cross_validation import random_train_test_split
 from lightfm import LightFM
 from lightfm.evaluation import precision_at_k, recall_at_k, auc_score
-from datetime import datetime
-import logging, logging.handlers
 
-class CFModels:
+from spotlight.interactions import Interactions
+# from spotlight.cross_validation import random_train_test_split
+from spotlight.factorization.implicit import ImplicitFactorizationModel
+from spotlight.evaluation import mrr_score
+
+
+class LFMBaselines:
     def __init__(self):
         self.csvpath = './data/csv/'
         self.logpath = './log/models/'
@@ -18,7 +25,7 @@ class CFModels:
                 level=logging.INFO,
                 format="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s",
                 handlers=[
-                    logging.FileHandler("{0}/{1} ({2}).log".format(self.logpath, str(datetime.now())[:-7],loss)),
+                    logging.FileHandler("{0}/{1} LFM ({2}).log".format(self.logpath, str(datetime.now())[:-7],loss)),
                     logging.StreamHandler(sys.stdout)
                 ])
 
@@ -84,8 +91,48 @@ class CFModels:
         logger.info('Model fitting completed')
         self.evaluate_model(model, 3, item_features, train, test)
         logger.info("--- %s seconds ---" % (time.time() - start_time))
+
+
+class SLBaselines:
+    def __init__(self):
+        self.csvpath = './data/csv/'
+        self.logpath = './log/models/'
+
+    def logger(self, loss):
+        logging.basicConfig(
+                level=logging.INFO,
+                format="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s",
+                handlers=[
+                    logging.FileHandler("{0}/{1} SL ({2}).log".format(self.logpath, str(datetime.now())[:-7],loss)),
+                    logging.StreamHandler(sys.stdout)
+                ])
+
+    def get_interactions(self):
+        data = np.genfromtxt(os.path.join(self.csvpath, 'stocktwits.csv'), delimiter='\t', names=True, usecols=(0,1),dtype=(int, int))
+        return Interactions(data['user_id'], data['item_id'])
+
+    def run(self, lf):
+        self.logger(lf)
+        logger = logging.getLogger()
+        # start_time = time.time()
+
+        logger.info('Building Interactions Matrix...')
+        dataset = self.get_interactions()
+        logger.info(dataset)
         
+        train, test = random_train_test_split(dataset)
+
+        logger.info('Fitting Model... Loss: {}'.format(lf.upper()))
+        model = ImplicitFactorizationModel(loss=lf,
+                                            n_iter=10,
+                                            use_cuda=True)
+        model.fit(train)
+        logging.info('Model Fitting Completed')
+
+        # mrr = mrr_score(model, test)
 
 if __name__ == "__main__":
-    cfm = CFModels()
+    cfm = LFMBaselines()
     cfm.run('bpr')
+    # slb = SLBaselines()
+    # slb.run('bpr')
