@@ -40,7 +40,6 @@ class MetadataTensorRec:
 
     def cf_construct_indicator_features(self, n_users_items, sparse_train):
         n_users, n_items = n_users_items
-        # Construct indicator features for users and items
         user_indicator_features = sparse.identity(n_users)
         item_indicator_features = sparse.identity(n_items)
 
@@ -49,7 +48,8 @@ class MetadataTensorRec:
         print("Training collaborative filter")
         cf_model.fit(interactions=sparse_train,
                     user_features=user_indicator_features,
-                    item_features=item_indicator_features)
+                    item_features=item_indicator_features,
+                    user_batch_size=64)
         return (cf_model, (user_indicator_features, item_indicator_features))
 
     def evaluate_model(self, ranks, sparse_matrices):
@@ -71,28 +71,56 @@ class MetadataTensorRec:
         raw_metadata, raw_metadata_header, internal_item_ids, n_items = metadata[0], metadata[1], internal_item_ids[0], internal_item_ids[1]
         internal_locations, internal_industries, internal_sectors, internal_cashtags = {}, {}, {}, {}
 
+
         for row in raw_metadata:
             row[2] = internal_item_ids[int(row[2])] 
             internal_industries[row[2]] = row[3]
             internal_sectors[row[2]] = row[4]
             internal_cashtags[row[2]] = row[5]
 
+        print("Raw metadata example:\n{}\n{}".format(raw_metadata_header, 
+                                                    raw_metadata[0]))
 
         industries = [internal_industries[internal_id]
                         for internal_id in list(internal_industries.keys())]
-        sectors = [internal_sectors[internal_id]
-                        for internal_id in list(internal_sectors.keys())]
-        cashtags = [internal_cashtags[internal_id]
-                        for internal_id in list(internal_cashtags.keys())]
+        # sectors = [internal_sectors[internal_id]
+        #                 for internal_id in list(internal_sectors.keys())]
+        # cashtags = [internal_cashtags[internal_id]
+        #                 for internal_id in list(internal_cashtags.keys())]
 
         industry_features = MultiLabelBinarizer().fit_transform(industries)
-        sector_features = MultiLabelBinarizer().fit_transform(sectors)
-        cashtag_features = MultiLabelBinarizer().fit_transform(cashtags)
+        print("Size of MLB is {:.3f}MB".format(industry_features.data.nbytes/(1024**2)))
+        # sector_features = MultiLabelBinarizer().fit_transform(sectors)
+        # cashtag_features = MultiLabelBinarizer().fit_transform(cashtags)
 
         industry_features = sparse.coo_matrix(industry_features)
-        sector_features = sparse.coo_matrix(sector_features)
-        cashtag_features = sparse.coo_matrix(cashtag_features)
-        return (industry_features, sector_features, cashtag_features)
+        # sector_features = sparse.coo_matrix(sector_features)
+        # cashtag_features = sparse.coo_matrix(cashtag_features)
+        print("Size of COO Matrix is {:.3f}MB".format(industry_features.data.nbytes/(1024**2)))
+        return (industry_features)
+
+
+    def cb_fit_model(self, industry_features, user_indicator_features, n_users_items, sparse_matrices):
+        sparse_train, _ = sparse_matrices
+        n_industries, n_items = n_users_items
+        # Fit a content-based model using the genres as item features
+        print("Training content-based recommender")
+        content_model = tensorrec.TensorRec(
+            n_components=n_industries, # movie_genre_features.shape[1]
+            item_repr_graph=tensorrec.representation_graphs.FeaturePassThroughRepresentationGraph(),
+            loss_graph=tensorrec.loss_graphs.WMRBLossGraph()
+        )
+        content_model.fit(interactions=sparse_train,
+                        user_features=user_indicator_features,
+                        item_features=industry_features,
+                        n_sampled_items=int(n_items * .01),
+                        user_batch_size=64)
+
+        # Check the results of the content-based model
+        print("Content-based recommender:")
+        predicted_ranks = content_model.predict_rank(user_features=user_indicator_features,
+                                                    item_features=industry_features)
+        self.evaluate_model(predicted_ranks, sparse_matrices)
 
     def run(self, rpath):
         raw_metadata, raw_metadata_header = self.load_csv(rpath)
@@ -102,13 +130,13 @@ class MetadataTensorRec:
 
         train, test = self.train_test_split(raw_metadata)
         sparse_matrices = self.interactions_to_sparse_matrix(train, n_users_items), self.interactions_to_sparse_matrix(test, n_users_items)
-        # cf_model, (user_indicator_features, item_indicator_features) = self.cf_construct_indicator_features(n_users_items, sparse_matrices[0])
         
-        # predicted_ranks = cf_model.predict_rank(user_features=user_indicator_features,
-        #                                 item_features=item_indicator_features)
-        # self.evaluate_model(predicted_ranks, sparse_matrices)
-
-        self.add_item_metadata((raw_metadata, raw_metadata_header), (internal_item_ids, len(internal_item_ids)))
+        cf_model, (user_indicator_features, item_indicator_features) = self.cf_construct_indicator_features(n_users_items, sparse_matrices[0])
+        predicted_ranks = cf_model.predict_rank(user_features=user_indicator_features,
+                                        item_features=item_indicator_features)
+        self.evaluate_model(predicted_ranks, sparse_matrices)
+        industry_features = self.add_item_metadata((raw_metadata, raw_metadata_header), (internal_item_ids, len(internal_item_ids)))
+        #self.cb_fit_model(industry_features, user_indicator_features, (industry_features.shape[1],len(internal_item_ids)), sparse_matrices)
 
 if __name__ == "__main__":
     mtr = MetadataTensorRec()

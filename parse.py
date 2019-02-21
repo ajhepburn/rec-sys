@@ -1,5 +1,6 @@
 import os, json, sys, logging, csv
 from datetime import datetime
+import pandas as pd
 
 
 class AttributeParser:
@@ -91,7 +92,34 @@ class AttributeParser:
 
 
 
+class AttributeCleaner:
+    def __init__(self):
+        self.rpath = './data/csv/metadata.csv'
+
+    def csv_to_dataframe(self):
+        data = pd.read_csv(self.rpath, delimiter='\t')
+        print("Read file with {0} entries".format(len(data.index)))
+        return data
+
+    def clean_user_locations(self):
+        pass
+
+    def clean_rare_users(self):
+        data = self.csv_to_dataframe()
+        data_count, k = len(data.index), 10
+        cleaned_users = data.groupby('user_id').filter(lambda x: len(x) > k)
+        print("Removed users with less than {0} tweets. Size of DataFrame: {1} -> {2}".format(k, data_count, len(cleaned_users.index)))
+
+
+    def run(self):
+        self.clean_rare_users()
+
+
+
+
 
 if __name__ == "__main__":
-    ab = AttributeParser('2017_01_15')
-    ab.run()
+    # ab = AttributeParser('2017_02_01')
+    # ab.run()
+    ac = AttributeCleaner()
+    ac.run()
