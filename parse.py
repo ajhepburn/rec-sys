@@ -74,7 +74,7 @@ class AttributeParser:
                             continue
                         uid, uloc, iid, ii, isec, ic = self.parse(l)
                         # ii, isec, ic = "|".join(ii), "|".join(isec), "|".join(ic)
-                        writer.writerow({'user_id':uid, 'location':uloc,'item_id':iid, 'item_industries':ii,'item_sectors':isec,'item_cashtags':ic})
+                        writer.writerow({'user_id':uid, 'location':uloc,'item_id':iid, 'item_industries':','.join(map(str, ii)),'item_sectors':','.join(map(str, isec)),'item_cashtags':','.join(map(str, ic))})
                         line_count+=1
         
         return line_count
@@ -95,31 +95,39 @@ class AttributeParser:
 class AttributeCleaner:
     def __init__(self):
         self.rpath = './data/csv/metadata.csv'
+        self.df = self.csv_to_dataframe()
 
     def csv_to_dataframe(self):
         data = pd.read_csv(self.rpath, delimiter='\t')
         print("Read file with {0} entries".format(len(data.index)))
         return data
 
-    def clean_user_locations(self):
-        pass
+    def dataframe_to_csv(self):
+        self.df.to_csv(path_or_buf='./data/csv/metadata_clean.csv', index=False, sep='\t')
+        print("Written CSV at {0}".format(str(datetime.now())[:-7]))
+
+    # def clean_user_locations(self):
+    #     print(self.df)
 
     def clean_rare_users(self):
-        data = self.csv_to_dataframe()
-        data_count, k = len(data.index), 10
-        cleaned_users = data.groupby('user_id').filter(lambda x: len(x) > k)
+        data_count, k = len(self.df.index), 10
+        cleaned_users = self.df.groupby('user_id').filter(lambda x: len(x) > k)
         print("Removed users with less than {0} tweets. Size of DataFrame: {1} -> {2}".format(k, data_count, len(cleaned_users.index)))
+        self.df = cleaned_users
 
 
     def run(self):
         self.clean_rare_users()
+        self.dataframe_to_csv()
+        # self.clean_user_locations()
+
 
 
 
 
 
 if __name__ == "__main__":
-    # ab = AttributeParser('2017_02_01')
-    # ab.run()
+    ab = AttributeParser('2017_03_01')
+    ab.run()
     ac = AttributeCleaner()
     ac.run()

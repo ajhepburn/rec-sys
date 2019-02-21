@@ -1,4 +1,5 @@
 import os, csv, sys, random, tensorrec, warnings
+import tensorflow as tf
 from collections import defaultdict
 from scipy import sparse
 from sklearn.preprocessing import MultiLabelBinarizer
@@ -9,6 +10,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 class MetadataTensorRec:
     def __init__(self):
         self.rpath = './data/csv/metadata.csv'
+        sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
 
     def load_csv(self, rpath):
         with open(self.rpath, 'r') as metadata_file:
@@ -49,11 +51,13 @@ class MetadataTensorRec:
         cf_model = tensorrec.TensorRec(n_components=5)
 
         print("Training collaborative filter")
+        sys.exit(0)
         cf_model.fit(interactions=sparse_train,
                     user_features=user_indicator_features,
                     item_features=item_indicator_features,
-                    user_batch_size=64,
-                    verbose=True)
+                    user_batch_size=32,
+                    verbose=True,
+                    epochs=10)
         return (cf_model, (user_indicator_features, item_indicator_features))
 
     def evaluate_model(self, ranks, sparse_matrices):
@@ -118,8 +122,9 @@ class MetadataTensorRec:
                         user_features=user_indicator_features,
                         item_features=industry_features,
                         n_sampled_items=int(n_items * .01),
-                        user_batch_size=64,
-                        verbose=True)
+                        user_batch_size=32,
+                        verbose=True,
+                        epochs=10)
 
         # Check the results of the content-based model
         print("Content-based recommender:")
