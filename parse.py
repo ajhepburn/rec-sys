@@ -36,20 +36,20 @@ class AttributeParser:
 
         d = json.loads(l)['data']
         symbols = d.get('symbols', False)
-        industries, sectors, cashtags = [], [], []
+        titles, cashtags, industries, sectors = [], [], [], []
 
         if symbols:                     # Checks to see if cashtags exist in tweet
             for s in symbols:
-                industry, sector = s.get('industry'), s.get('sector')  # Check to see if a cashtag contains an 'Industry' tag, otherwise skip
-                if not industry:
+                s_title, s_symbol, s_industry, s_sector = s.get('title'), s.get('symbol'), s.get('industry'), s.get('sector')  # Check to see if a cashtag contains an 'Industry' tag, otherwise skip
+                if not s_industry:
                     continue
 
-                uid, uloc, iid, ii, isec, ic = d['user']['id'], d['user']['location'],d['id'], industry, sector, s['symbol']
-                industries.append(ii)
-                sectors.append(isec)
-                cashtags.append(ic)
+                user_id, user_location = d.get('user').get('id'), d.get('user').get('location')
+                item_id, item_timestamp = d.get('id'), d.get('created_at')
 
-        return (uid, uloc, iid, industries, sectors, cashtags) if industries else ((None),)*6
+                titles[len(titles):], cashtags[len(cashtags):], industries[len(industries):], sectors[len(sectors):] = tuple(zip((s_title, s_symbol, s_industry, s_sector)))
+
+        return (user_id, user_location, item_id, item_timestamp, titles, cashtags, industries, sectors) if industries else ((None),)*8
                  
     def file_writer(self):
         """ Responsible for writing to ct_industry.csv in ./data/csv/ and logging each file read.
@@ -61,7 +61,7 @@ class AttributeParser:
         logger = logging.getLogger()
 
         with open (os.path.join(self.wpath, 'metadata.csv'), 'w', newline='') as stocktwits_csv:
-            fields = ['user_id', 'item_id', 'user_location', 'item_industries','item_sectors','item_cashtags']
+            fields = ['user_id', 'user_location','item_id', 'item_timestamp', 'item_titles','item_cashtags','item_industries','item_sectors']
             writer = csv.DictWriter(stocktwits_csv, fieldnames=fields, delimiter='\t')
             writer.writeheader()
             line_count = 0
@@ -72,9 +72,8 @@ class AttributeParser:
                     for l in f:
                         if not all(self.parse(l)):
                             continue
-                        uid, uloc, iid, ii, isec, ic = self.parse(l)
-                        # ii, isec, ic = "|".join(ii), "|".join(isec), "|".join(ic)
-                        writer.writerow({'user_id':uid, 'user_location':uloc,'item_id':iid, 'item_industries':','.join(map(str, ii)),'item_sectors':','.join(map(str, isec)),'item_cashtags':','.join(map(str, ic))})
+                        user_id, user_location, item_id, item_timestamp, titles, cashtags, industries, sectors = self.parse(l)
+                        writer.writerow({'user_id':user_id, 'user_location':user_location, 'item_id':item_id, 'item_timestamp':item_timestamp, 'item_titles':titles,'item_cashtags':','.join(map(str, cashtags)), 'item_industries':','.join(map(str, industries)),'item_sectors':','.join(map(str, sectors))})
                         line_count+=1
         
         return line_count
@@ -139,7 +138,7 @@ class AttributeCleaner:
 
 
 if __name__ == "__main__":
-    ab = AttributeParser('2017_03_01')
+    ab = AttributeParser('2017_02_01')
     ab.run()
     ac = AttributeCleaner()
     ac.run()
