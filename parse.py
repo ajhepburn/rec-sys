@@ -45,11 +45,11 @@ class AttributeParser:
                     continue
 
                 user_id, user_location = d.get('user').get('id'), d.get('user').get('location')
-                item_id, item_timestamp = d.get('id'), d.get('created_at')
+                item_id, item_timestamp, item_body = d.get('id'), d.get('created_at'), d.get('body').replace('\t',' ').replace('\n','')
 
                 titles[len(titles):], cashtags[len(cashtags):], industries[len(industries):], sectors[len(sectors):] = tuple(zip((s_title, s_symbol, s_industry, s_sector)))
 
-        return (user_id, user_location, item_id, item_timestamp, titles, cashtags, industries, sectors) if industries else ((None),)*8
+        return (user_id, user_location, item_id, item_timestamp, item_body, titles, cashtags, industries, sectors) if industries else ((None),)*9
                  
     def file_writer(self):
         """ Responsible for writing to ct_industry.csv in ./data/csv/ and logging each file read.
@@ -61,7 +61,7 @@ class AttributeParser:
         logger = logging.getLogger()
 
         with open (os.path.join(self.wpath, 'metadata.csv'), 'w', newline='') as stocktwits_csv:
-            fields = ['user_id', 'item_id', 'user_location', 'item_timestamp', 'item_titles','item_cashtags','item_industries','item_sectors']
+            fields = ['user_id', 'item_id', 'user_location', 'item_timestamp', 'item_body','item_titles','item_cashtags','item_industries','item_sectors']
             writer = csv.DictWriter(stocktwits_csv, fieldnames=fields, delimiter='\t')
             writer.writeheader()
             line_count = 0
@@ -72,8 +72,8 @@ class AttributeParser:
                     for l in f:
                         if not all(self.parse(l)):
                             continue
-                        user_id, user_location, item_id, item_timestamp, titles, cashtags, industries, sectors = self.parse(l)
-                        writer.writerow({'user_id':user_id, 'item_id':item_id, 'user_location':user_location, 'item_timestamp':item_timestamp, 'item_titles':','.join(map(str, titles)),'item_cashtags':','.join(map(str, cashtags)), 'item_industries':','.join(map(str, industries)),'item_sectors':','.join(map(str, sectors))})
+                        user_id, user_location, item_id, item_timestamp, item_body, titles, cashtags, industries, sectors = self.parse(l)
+                        writer.writerow({'user_id':user_id, 'item_id':item_id, 'user_location':user_location, 'item_body':item_body,'item_timestamp':item_timestamp, 'item_titles':'|'.join(map(str, titles)),'item_cashtags':'|'.join(map(str, cashtags)), 'item_industries':'|'.join(map(str, industries)),'item_sectors':'|'.join(map(str, sectors))})
                         line_count+=1
         
         return line_count
@@ -121,7 +121,7 @@ class AttributeCleaner:
             to stdout.
         """
 
-        data_count, k = len(self.df.index), 20
+        data_count, k = len(self.df.index), 10
         cleaned_users = self.df.groupby('user_id').filter(lambda x: len(x) > k)
         print("Removed users with less than {0} tweets. Size of DataFrame: {1} -> {2}".format(k, data_count, len(cleaned_users.index)))
         self.df = cleaned_users
@@ -138,7 +138,7 @@ class AttributeCleaner:
 
 
 if __name__ == "__main__":
-    ab = AttributeParser('2017_02_01')
+    ab = AttributeParser('2017_01_05')
     ab.run()
     ac = AttributeCleaner()
     ac.run()
