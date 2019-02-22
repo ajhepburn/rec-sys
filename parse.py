@@ -61,7 +61,7 @@ class AttributeParser:
         logger = logging.getLogger()
 
         with open (os.path.join(self.wpath, 'metadata.csv'), 'w', newline='') as stocktwits_csv:
-            fields = ['user_id', 'location','item_id', 'item_industries','item_sectors','item_cashtags']
+            fields = ['user_id', 'item_id', 'user_location', 'item_industries','item_sectors','item_cashtags']
             writer = csv.DictWriter(stocktwits_csv, fieldnames=fields, delimiter='\t')
             writer.writeheader()
             line_count = 0
@@ -74,7 +74,7 @@ class AttributeParser:
                             continue
                         uid, uloc, iid, ii, isec, ic = self.parse(l)
                         # ii, isec, ic = "|".join(ii), "|".join(isec), "|".join(ic)
-                        writer.writerow({'user_id':uid, 'location':uloc,'item_id':iid, 'item_industries':','.join(map(str, ii)),'item_sectors':','.join(map(str, isec)),'item_cashtags':','.join(map(str, ic))})
+                        writer.writerow({'user_id':uid, 'user_location':uloc,'item_id':iid, 'item_industries':','.join(map(str, ii)),'item_sectors':','.join(map(str, isec)),'item_cashtags':','.join(map(str, ic))})
                         line_count+=1
         
         return line_count
@@ -98,19 +98,31 @@ class AttributeCleaner:
         self.df = self.csv_to_dataframe()
 
     def csv_to_dataframe(self):
+        """ Reads in CSV and converts to Pandas DataFrame, outputting number of entries to stdout.
+
+        """
+
         data = pd.read_csv(self.rpath, delimiter='\t')
         print("Read file with {0} entries".format(len(data.index)))
         return data
 
     def dataframe_to_csv(self):
+        """ Writes cleaned dataset back to CSV format.
+
+        """
+
         self.df.to_csv(path_or_buf='./data/csv/metadata_clean.csv', index=False, sep='\t')
-        print("Written CSV at {0}".format(str(datetime.now())[:-7]))
+        print("Written CSV at {0} with {1} entries".format(str(datetime.now())[:-7], len(self.df.index)))
 
     # def clean_user_locations(self):
     #     print(self.df)
 
     def clean_rare_users(self):
-        data_count, k = len(self.df.index), 10
+        """ Removes users who have made less than k tweets, outputting change of entry count
+            to stdout.
+        """
+
+        data_count, k = len(self.df.index), 20
         cleaned_users = self.df.groupby('user_id').filter(lambda x: len(x) > k)
         print("Removed users with less than {0} tweets. Size of DataFrame: {1} -> {2}".format(k, data_count, len(cleaned_users.index)))
         self.df = cleaned_users
