@@ -61,7 +61,7 @@ class AttributeParser:
         logger = logging.getLogger()
 
         with open (os.path.join(self.wpath, 'metadata.csv'), 'w', newline='') as stocktwits_csv:
-            fields = ['user_id', 'user_location','item_id', 'item_timestamp', 'item_titles','item_cashtags','item_industries','item_sectors']
+            fields = ['user_id', 'item_id', 'user_location', 'item_timestamp', 'item_titles','item_cashtags','item_industries','item_sectors']
             writer = csv.DictWriter(stocktwits_csv, fieldnames=fields, delimiter='\t')
             writer.writeheader()
             line_count = 0
@@ -73,7 +73,7 @@ class AttributeParser:
                         if not all(self.parse(l)):
                             continue
                         user_id, user_location, item_id, item_timestamp, titles, cashtags, industries, sectors = self.parse(l)
-                        writer.writerow({'user_id':user_id, 'user_location':user_location, 'item_id':item_id, 'item_timestamp':item_timestamp, 'item_titles':titles,'item_cashtags':','.join(map(str, cashtags)), 'item_industries':','.join(map(str, industries)),'item_sectors':','.join(map(str, sectors))})
+                        writer.writerow({'user_id':user_id, 'item_id':item_id, 'user_location':user_location, 'item_timestamp':item_timestamp, 'item_titles':','.join(map(str, titles)),'item_cashtags':','.join(map(str, cashtags)), 'item_industries':','.join(map(str, industries)),'item_sectors':','.join(map(str, sectors))})
                         line_count+=1
         
         return line_count
