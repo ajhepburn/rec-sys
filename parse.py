@@ -138,7 +138,7 @@ class AttributeCleaner:
 
 
 if __name__ == "__main__":
-    ab = AttributeParser('2017_01_05')
+    ab = AttributeParser('2017_01_08')
     ab.run()
     ac = AttributeCleaner()
     ac.run()
