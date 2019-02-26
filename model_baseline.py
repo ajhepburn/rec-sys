@@ -2,6 +2,8 @@ import scipy, sys
 import pandas as pd
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn import preprocessing
+from rank_metrics import mean_reciprocal_rank
 
 class BaselineItemToItemRecommender:
     def __init__(self):
@@ -28,7 +30,7 @@ class BaselineItemToItemRecommender:
     def build_single_user_profile(self, df, df_items, indices, cosine_sim):
         df['item_id'] = df['item_id'].astype(str)
         df = df.groupby('user_id')['item_id'].apply(' '.join).reset_index()
-        user_id = 7806
+        user_id = 769010
         user_idx = df.loc[df['user_id'] == user_id]
         user_items = [int(x) for x in user_idx['item_id'].item().split(' ')]
         user_items_cosine = [cosine_sim[indices[x]] for x in user_items]
@@ -38,12 +40,31 @@ class BaselineItemToItemRecommender:
         sim_scores = sim_scores[1:11]
         item_indices = [i[0] for i in sim_scores]
         print("\n\nPRINTING TWEETS BY USER {0}".format(user_id))
-        print(df_items.loc[df_items['item_id'].isin(user_items)][['item_id', 'item_body', 'item_industries']][:10])
+        user_posts = df_items.loc[df_items['item_id'].isin(user_items)][['item_id', 'item_body', 'item_industries']][:10]
+        print(user_posts)
+        user_post_cats, recommended_cats = [], []
+        for x in user_posts['item_industries'].values.tolist():
+            if '|' in x:
+                user_post_cats += x.split('|')
+            else:
+                user_post_cats.append(x)
+        user_posts_cats = list(set(user_post_cats))
 
         print("\n\nPRINTING RECOMMENDATIONS FOR USER {0}".format(user_id))
-        print(df_items.iloc[item_indices][['item_id', 'item_body', 'item_industries']])
+        recommended_items = df_items.iloc[item_indices][['item_id', 'item_body', 'item_industries']]
+        print(recommended_items)
+        for x in recommended_items['item_industries'].values.tolist():
+            if '|' in x:
+                recommended_cats += x.split('|')
+            else:
+                recommended_cats.append(x)
+        recommended_cats = list(set(recommended_cats))
+        self.evaluate_recommendations(user_posts_cats, recommended_cats)
         # print(user_items)
 
+    def evaluate_recommendations(self, up_cats, rec_cats):
+        lb = preprocessing.LabelBinarizer()
+        lb.fit(up_cats)
         
     def run(self):
         df_user, df_items, df_interactions = self.csv_to_df()
