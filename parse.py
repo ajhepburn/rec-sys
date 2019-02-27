@@ -1,6 +1,10 @@
 import os, json, sys, logging, csv
 from datetime import datetime
 import pandas as pd
+import spacy, geopandas, geopy, pycountry
+from  more_itertools import unique_everseen
+
+from placenames import us_states, ca_prov, countries
 
 
 class AttributeParser:
@@ -78,8 +82,6 @@ class AttributeParser:
         
         return line_count
 
-
-
     def run(self):
         self.logger()
         logger = logging.getLogger()
@@ -96,6 +98,8 @@ class AttributeCleaner:
         self.logpath = './log/io/csv/cleaner/'
         self.rpath = './data/csv/metadata.csv'
         self.df = self.csv_to_dataframe()
+        spacy.prefer_gpu()
+        self.nlp = spacy.load('en')
 
     def logger(self):
         """ Sets the logger configuration to report to both std.out and to log to ./log/io/csv/cleaner
@@ -129,8 +133,45 @@ class AttributeCleaner:
         self.df.to_csv(path_or_buf='./data/csv/metadata_clean.csv', index=False, sep='\t')
         logger.info("Written CSV at {0} with {1} entries".format(str(datetime.now())[:-7], len(self.df.index)))
 
-    # def clean_user_locations(self):
-    #     print(self.df)
+    def clean_user_locations(self):
+        logger = logging.getLogger()
+        data_count = len(self.df.index)
+        self.df['user_location'] = self.df['user_location'].astype(str)
+        self.df['user_loc_check'] = False
+        self.df = self.df[~self.df.user_location.str.contains(r'[0-9]')]
+        for i, data in self.df.iterrows():
+            sys.stdout.write(">> Currently on row: {}; Currently iterrated {:.2f}% of rows\r".format(i, (i + 1)/data_count * 100))
+            sys.stdout.flush()
+            doc = self.nlp(data['user_location'])
+            gpe_check = all(ent.label_ == 'GPE' for ent in doc.ents)
+            if gpe_check and doc.ents:
+                location = [str(x) for x in list(doc.ents)]
+                try:
+                    for p in location:
+                        if p.lower() in countries:
+                            country_conversions = {'taiwan':'twn', 'czech republic': 'cze'}
+                            location[location.index(p)] = country_conversions[p.lower()] if p.lower() in country_conversions else pycountry.countries.get(name=p).alpha_3
+                        if len(p) == 2:
+                            lookup = {**us_states, **ca_prov}
+                            if p in lookup:
+                                province_full = lookup.get(p, None)
+                                if province_full is 'Louisiana' and location.index(p) is 0: province_full = 'Los Angeles'
+                                location = [province_full if x==p else x for x in location]
+                                location = ['NewYork' if x=='NewYorkCity' else x for x in location]
+                    location = [x.replace(' ','').lower() for x in location]
+                    location = list(unique_everseen(location))
+                    loc_string = '|'.join(location)
+                    self.df[i, 'user_location'], self.df[i, 'user_loc_check'] = loc_string, True
+                except AttributeError:
+                    continue
+        cleaned_users = self.df[self.df.user_lock_check]
+        # cleaned_users = self.df[~self.df.user_loc_check.str.contains(False)]
+        logger.info("\n\nRemoved users with malformed location information. Size of DataFrame: {1} -> {2}".format(data_count, len(cleaned_users.index)))
+        self.df = cleaned_users
+
+            
+
+        #dfTrials.loc[i, "user_location"] = "answer {}".format(trial["no"])
 
     def clean_rare_users(self):
         """ Removes users who have made less than k tweets, outputting change of entry count
@@ -147,6 +188,7 @@ class AttributeCleaner:
     def run(self):
         self.logger()
         self.clean_rare_users()
+        self.clean_user_locations()
         self.dataframe_to_csv()
         # self.clean_user_locations()
 
@@ -156,7 +198,7 @@ class AttributeCleaner:
 
 
 if __name__ == "__main__":
-    ab = AttributeParser('2017_02_01')
-    ab.run()
+    # ab = AttributeParser('2017_02_01')
+    # ab.run()
     ac = AttributeCleaner()
     ac.run()

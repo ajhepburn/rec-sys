@@ -39,10 +39,10 @@ class HybridBaselineModel:
         """
 
         df = pd.read_csv(self.rpath, sep='\t')
-        df_user_features, df_item_features, df_interactions = df[['user_id', 'item_cashtags']], df[['item_id', 'item_timestamp', 'item_body','item_titles', 'item_cashtags', 'item_industries', 'item_sectors']], df[['user_id', 'item_id']]
+        df_user_features, df_item_features, df_interactions = df[['user_id', 'item_sectors']], df[['item_id', 'item_timestamp', 'item_body','item_titles', 'item_cashtags', 'item_industries', 'item_sectors']], df[['user_id', 'item_id']]
         return (df_user_features, df_item_features, df_interactions)
 
-    def build_id_mappings(self, df_interactions: pd.DataFrame, df_item_features: pd.DataFrame) -> Dataset:
+    def build_id_mappings(self, df_interactions: pd.DataFrame, df_user_features: pd.DataFrame, df_item_features: pd.DataFrame) -> Dataset:
         """Builds internal indice mapping for user-item interactions and encodes item features.
 
         Reads in user-item interactions and the features associated with each item and builds a mapping 
@@ -67,11 +67,13 @@ class HybridBaselineModel:
         item_industries = list(map('INDUSTRY:{0}'.format, list(set('|'.join(df_item_features['item_industries'].tolist()).split('|')))))
         item_cashtags = list(map('TAG:{0}'.format, list(set('|'.join(df_item_features['item_cashtags'].tolist()).split('|')))))
 
+        user_features = item_sectors
         item_features = item_sectors+item_industries+item_cashtags
         
         dataset = Dataset()
         dataset.fit((x for x in df_interactions['user_id']), 
                     (x for x in df_interactions['item_id']),
+                    user_features=user_features,
                     item_features=item_features)
         return (dataset, item_sectors, item_industries, item_cashtags)
 
@@ -111,6 +113,41 @@ class HybridBaselineModel:
                 
         (interactions, weights) = dataset.build_interactions(gen_rows(df_interactions))
         return (interactions, weights)
+
+    def build_user_features(self, dataset: Dataset, df_user_features: pd.DataFrame) -> csr_matrix:
+        df = df_user_features.groupby('user_id')['item_sectors'].apply('|'.join).reset_index()
+        def gen_rows(df):
+            """Yields 
+
+            Args:
+               df (pd.DataFrame): df_user_features matrix
+
+            Yields:
+                pd.core.frame.Pandas: User IDs and their corresponding features as column separated values.
+
+            Examples:
+                Generates a row, line by line of item IDs and their corresponding features/weights to pass to the 
+                lightfm.data.Dataset.build_item_features function. The build_item_features function then normalises
+                these weights per row.
+
+                Also prepends each item with its type for a more accurate model.
+
+                >>> print(row)
+                [12345678, {'TAG:[CASHTAG]:2}]
+
+            """
+
+            for row in df.itertuples(index=False):
+                d = row._asdict()
+                user_sectors =  list(map('SECTOR:{0}'.format, d['item_sectors'].split('|')))
+                print(user_sectors)
+                sectors_weights = Counter(user_sectors)
+
+                for k, v in sectors_weights.items():
+                    yield [d['user_id'], {k:v}]
+
+        user_features = dataset.build_user_features(gen_rows(df), normalize=True)
+        return user_features
 
     def build_item_features(self, dataset: Dataset, df_item_features: pd.DataFrame) -> csr_matrix:
         """Binds item features to item IDs, provided they exist in the fitted model.
@@ -205,7 +242,7 @@ class HybridBaselineModel:
         model = model.fit(train, epochs=NUM_EPOCHS, num_threads=NUM_THREADS)
         return model
 
-    def hybrid_model(self, params: tuple, train: coo_matrix, item_features: csr_matrix) -> LightFM:
+    def hybrid_model(self, params: tuple, train: coo_matrix, user_features: csr_matrix, item_features: csr_matrix) -> LightFM:
         """Trains a hybrid collaborative filtering/content model
 
         Adds user/item features to model to enrich training data.
@@ -213,6 +250,7 @@ class HybridBaselineModel:
         Args:
             params (tuple): A number of hyperparameters for the model, namely NUM_THREADS, NUM_COMPONENTS, NUM_EPOCHS, ITEM_ALPHA.
             train (scipy.sparse.coo_matrix): Training set as a COO matrix.
+            user_features (scipy.sparse.csr_matrix) : Matrix of userfeatures.
             item_features (scipy.sparse.csr_matrix) : Matrix of item features.
 
         Returns:
@@ -232,11 +270,12 @@ class HybridBaselineModel:
         logger.info('Begin fitting hybrid model...')
         model = model.fit(train,
                         item_features=item_features,
+                        user_features=user_features,
                         epochs=NUM_EPOCHS,
                         num_threads=NUM_THREADS)
         return model
 
-    def evaluate_model(self, model: LightFM, model_name: str, eval_metrics: list, sets: tuple, NUM_THREADS: str, item_features: csr_matrix=None, k: int=None):
+    def evaluate_model(self, model: LightFM, model_name: str, eval_metrics: list, sets: tuple, NUM_THREADS: str, user_features: csr_matrix=None, item_features: csr_matrix=None, k: int=None):
         """Evaluates models on a number of metrics
 
         Takes model and evaluates it depending on which evaluation metrics are passed in.
@@ -249,6 +288,7 @@ class HybridBaselineModel:
             eval_metrics (list): A list containing which evaluation metrics to carry out. Can be either of 'auc', 'precrec', 'mrr'
             sets (tuple): (scipy.sparse.coo_matrix, scipy.sparse.coo_matrix), A tuple of (train data, test data).
             NUM_THREADS (str): Number of threads to run evaluations on, corresponding to physical cores on system.
+            user_features (scipy.sparse.csr_matrix, optional): Matrix of user features. Defaults to None.
             item_features (scipy.sparse.csr_matrix, optional): Matrix of item features. Defaults to None.
             k (integer, optional): The k parameter for Precision@K/Recall@K corresponding to Top-N recommendations.
 
@@ -268,6 +308,7 @@ class HybridBaselineModel:
 
             train_auc = auc_score(model,
                             train,
+                            user_features=user_features if user_features is not None else None,
                             item_features=item_features if item_features is not None else None,
                             num_threads=NUM_THREADS).mean()
             logger.info(model_name+' training set AUC: %s' % train_auc)
@@ -275,6 +316,7 @@ class HybridBaselineModel:
             test_auc = auc_score(model,
                     test,
                     train_interactions=train,
+                    user_features=user_features if user_features is not None else None,
                     item_features=item_features if item_features is not None else None,
                     num_threads=NUM_THREADS).mean()
             logger.info(model_name+' test set AUC: %s' % test_auc)
@@ -298,12 +340,14 @@ class HybridBaselineModel:
             train_precision = precision_at_k(model, 
                                 train, 
                                 k=k, 
+                                user_features=user_features if user_features is not None else None,
                                 item_features=item_features if item_features is not None else None, 
                                 num_threads=NUM_THREADS).mean()
             logger.info(model_name+' training set Precision@%s: %s' % (k, train_precision))
             test_precision = precision_at_k(model, 
                                 test, 
                                 k=k, 
+                                user_features=user_features if user_features is not None else None,
                                 item_features=item_features if item_features is not None else None, 
                                 num_threads=NUM_THREADS).mean()
             logger.info(model_name+' test set Precision@%s: %s' % (k, test_precision))
@@ -311,12 +355,14 @@ class HybridBaselineModel:
             train_recall = recall_at_k(model, 
                                 train, 
                                 k=k, 
+                                user_features=user_features if user_features is not None else None,
                                 item_features=item_features if item_features is not None else None, 
                                 num_threads=NUM_THREADS).mean()
             logger.info(model_name+' training set Recall@%s: %s' % (k, train_recall))
             test_recall = recall_at_k(model, 
                                 test, 
                                 k=k, 
+                                user_features=user_features if user_features is not None else None,
                                 item_features=item_features if item_features is not None else None, 
                                 num_threads=NUM_THREADS).mean()
             logger.info(model_name+' test set Recall@%s: %s' % (k, test_recall))
@@ -335,11 +381,13 @@ class HybridBaselineModel:
 
             train_mrr = reciprocal_rank(model, 
                                 train, 
+                                user_features=user_features if user_features is not None else None,
                                 item_features=item_features if item_features is not None else None, 
                                 num_threads=NUM_THREADS).mean()
             logger.info(model_name+' training set MRR: %s' % (train_mrr))
             test_mrr = reciprocal_rank(model, 
                                 test, 
+                                user_features=user_features if user_features is not None else None,
                                 item_features=item_features if item_features is not None else None, 
                                 num_threads=NUM_THREADS).mean()
             logger.info(model_name+' test set MRR: %s' % (test_mrr))
@@ -357,10 +405,13 @@ class HybridBaselineModel:
         params = (NUM_THREADS, _, _, _) = (4,30,3,1e-16)
 
         df_user_features, df_item_features, df_interactions = self.csv_to_df()
-        dataset, item_sectors, item_industries, item_cashtags = self.build_id_mappings(df_interactions, df_item_features)
+        dataset, item_sectors, item_industries, item_cashtags = self.build_id_mappings(df_interactions, df_user_features, df_item_features)
         
         interactions, _ = self.build_interactions_matrix(dataset, df_interactions)
+
+        user_features = self.build_user_features(dataset, df_user_features)
         item_features = self.build_item_features(dataset, df_item_features)
+
         train, test = self.cross_validate_interactions(interactions)
 
         logger.info('The dataset has %s users and %s items with %s interactions in the test and %s interactions in the training set.' % (train.shape[0], train.shape[1], test.getnnz(), train.getnnz()))
@@ -370,8 +421,8 @@ class HybridBaselineModel:
 
         logger.info('There are {0} distinct sectors, {1} distinct industries and {2} distinct cashtags.'.format(len(item_sectors), len(item_industries), len(item_cashtags)))
 
-        hybrid_model = self.hybrid_model(params, train, item_features)
-        self.evaluate_model(model=hybrid_model, model_name='h', eval_metrics=['auc', 'precrec', 'mrr'], sets=(train, test), NUM_THREADS=NUM_THREADS, item_features=item_features, k=10)
+        hybrid_model = self.hybrid_model(params, train, user_features, item_features)
+        self.evaluate_model(model=hybrid_model, model_name='h', eval_metrics=['auc', 'precrec', 'mrr'], sets=(train, test), NUM_THREADS=NUM_THREADS, user_features=user_features, item_features=item_features, k=10)
 
 
 
