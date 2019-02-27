@@ -1,7 +1,7 @@
 import os, json, sys, logging, csv
 from datetime import datetime
 import pandas as pd
-import spacy, geopandas, geopy, pycountry
+import spacy, pycountry, multiprocessing
 from  more_itertools import unique_everseen
 
 from placenames import us_states, ca_prov, countries
@@ -133,15 +133,10 @@ class AttributeCleaner:
         self.df.to_csv(path_or_buf='./data/csv/metadata_clean.csv', index=False, sep='\t')
         logger.info("Written CSV at {0} with {1} entries".format(str(datetime.now())[:-7], len(self.df.index)))
 
-    def clean_user_locations(self):
-        logger = logging.getLogger()
-        data_count = len(self.df.index)
-        self.df['user_location'] = self.df['user_location'].astype(str)
-        self.df['user_loc_check'] = False
-        self.df = self.df[~self.df.user_location.str.contains(r'[0-9]')]
-        for i, data in self.df.iterrows():
-            sys.stdout.write(">> Currently on row: {}; Currently iterrated {:.2f}% of rows\r".format(i, (i + 1)/data_count * 100))
-            sys.stdout.flush()
+    def iterate_location_data(self, d):
+        for i, data in d.iterrows():
+            # sys.stdout.write(">> Currently on row: {}; Currently iterrated {:.2f}% of rows\r".format(i, (i + 1)/data_count * 100))
+            # sys.stdout.flush()
             doc = self.nlp(data['user_location'])
             gpe_check = all(ent.label_ == 'GPE' for ent in doc.ents)
             if gpe_check and doc.ents:
@@ -161,17 +156,34 @@ class AttributeCleaner:
                     location = [x.replace(' ','').lower() for x in location]
                     location = list(unique_everseen(location))
                     loc_string = '|'.join(location)
-                    self.df[i, 'user_location'], self.df[i, 'user_loc_check'] = loc_string, True
+                    d[i, 'user_location'], d[i, 'user_loc_check'] = loc_string, True
                 except AttributeError:
                     continue
+        return d
+
+    def clean_user_locations(self):
+        logger = logging.getLogger()
+        num_processes = int(multiprocessing.cpu_count()/2)
+
+        self.df['user_location'] = self.df['user_location'].astype(str)
+        self.df['user_loc_check'] = False
+        self.df = self.df[~self.df.user_location.str.contains(r'[0-9]')]
+
+        chunk_size = int(self.df.shape[0]/num_processes)
+        chunks = [self.df.ix[self.df.index[i:i + chunk_size]] for i in range(0, self.df.shape[0], chunk_size)]
+        index_size_original = len(self.df.index)
+
+        logging.info('Beginning NER parsing...')
+        pool = multiprocessing.Pool(processes=num_processes)
+        result = pool.map(self.iterate_location_data, chunks)
+        logging.info('Parsing complete, recompiling DataFrame...')
+
+        for i in range(len(result)):
+            self.df.ix[result[i].index] = result[i]
+
         cleaned_users = self.df[self.df.user_lock_check]
-        # cleaned_users = self.df[~self.df.user_loc_check.str.contains(False)]
-        logger.info("\n\nRemoved users with malformed location information. Size of DataFrame: {1} -> {2}".format(data_count, len(cleaned_users.index)))
+        logger.info("Removed users with malformed location information. Size of DataFrame: {1} -> {2}".format(index_size_original, len(cleaned_users.index)))
         self.df = cleaned_users
-
-            
-
-        #dfTrials.loc[i, "user_location"] = "answer {}".format(trial["no"])
 
     def clean_rare_users(self):
         """ Removes users who have made less than k tweets, outputting change of entry count
