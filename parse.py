@@ -7,14 +7,14 @@ class AttributeParser:
     def __init__(self, limit: str):
         self.rpath = '/media/ntfs/st_2017'
         self.wpath = './data/csv/'
-        self.logpath = './log/io/'
+        self.logpath = './log/io/csv/'
 
         self.files = [f for f in os.listdir(self.rpath) if os.path.isfile(os.path.join(self.rpath, f))]
         self.files.sort()
         self.files = self.files[:next(self.files.index(x) for x in self.files if x.endswith(limit))]
 
     def logger(self):
-        """ Sets the logger configuration to report to both std.out and to log to ./log/io/
+        """ Sets the logger configuration to report to both std.out and to log to ./log/io/csv/
         Also sets the formatting instructions for the log file, prints Time, Current Thread, Logging Type, Message.
 
         """
@@ -22,7 +22,7 @@ class AttributeParser:
                 level=logging.INFO,
                 format="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s",
                 handlers=[
-                    logging.FileHandler("{0}/{1}_log ({2}).log".format(self.logpath, str(datetime.now())[:-7],'ct_industry_csv')),
+                    logging.FileHandler("{0}/{1}_log ({2}).log".format(self.logpath, str(datetime.now())[:-7],'metadata_csv')),
                     logging.StreamHandler(sys.stdout)
                 ])
     
@@ -93,25 +93,41 @@ class AttributeParser:
 
 class AttributeCleaner:
     def __init__(self):
+        self.logpath = './log/io/csv/cleaner/'
         self.rpath = './data/csv/metadata.csv'
         self.df = self.csv_to_dataframe()
+
+    def logger(self):
+        """ Sets the logger configuration to report to both std.out and to log to ./log/io/csv/cleaner
+        Also sets the formatting instructions for the log file, prints Time, Current Thread, Logging Type, Message.
+
+        """
+        logging.basicConfig(
+                level=logging.INFO,
+                format="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s",
+                handlers=[
+                    logging.FileHandler("{0}/{1}_log ({2}).log".format(self.logpath, str(datetime.now())[:-7],'metadata_csv_clean')),
+                    logging.StreamHandler(sys.stdout)
+                ])
 
     def csv_to_dataframe(self):
         """ Reads in CSV and converts to Pandas DataFrame, outputting number of entries to stdout.
 
         """
 
+        logger = logging.getLogger()
         data = pd.read_csv(self.rpath, delimiter='\t')
-        print("Read file with {0} entries".format(len(data.index)))
+        logger.info("Read file with {0} entries".format(len(data.index)))
         return data
 
     def dataframe_to_csv(self):
         """ Writes cleaned dataset back to CSV format.
 
         """
-
+        
+        logger = logging.getLogger()
         self.df.to_csv(path_or_buf='./data/csv/metadata_clean.csv', index=False, sep='\t')
-        print("Written CSV at {0} with {1} entries".format(str(datetime.now())[:-7], len(self.df.index)))
+        logger.info("Written CSV at {0} with {1} entries".format(str(datetime.now())[:-7], len(self.df.index)))
 
     # def clean_user_locations(self):
     #     print(self.df)
@@ -121,13 +137,15 @@ class AttributeCleaner:
             to stdout.
         """
 
-        data_count, k = len(self.df.index), 10
+        logger = logging.getLogger()
+        data_count, k = len(self.df.index), 160
         cleaned_users = self.df.groupby('user_id').filter(lambda x: len(x) > k)
-        print("Removed users with less than {0} tweets. Size of DataFrame: {1} -> {2}".format(k, data_count, len(cleaned_users.index)))
+        logger.info("Removed users with less than {0} tweets. Size of DataFrame: {1} -> {2}".format(k, data_count, len(cleaned_users.index)))
         self.df = cleaned_users
 
 
     def run(self):
+        self.logger()
         self.clean_rare_users()
         self.dataframe_to_csv()
         # self.clean_user_locations()
@@ -138,7 +156,7 @@ class AttributeCleaner:
 
 
 if __name__ == "__main__":
-    ab = AttributeParser('2017_01_08')
+    ab = AttributeParser('2017_02_01')
     ab.run()
     ac = AttributeCleaner()
     ac.run()
