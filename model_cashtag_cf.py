@@ -8,13 +8,13 @@ from datetime import datetime
 
 import sys, regex, logging
 
-class UserCashtagBaselineModel:
+class HybridBaselineModel:
     def __init__(self):
         self.logpath = './log/models/lfm_hybrid/'
         self.rpath = './data/csv/metadata_clean.csv'
 
     def logger(self):
-        """ Sets the logger configuration to report to both std.out and to log to ./log/io/csv/cleaner
+        """Sets the logger configuration to report to both std.out and to log to ./log/io/csv/cleaner
         Also sets the formatting instructions for the log file, prints Time, Current Thread, Logging Type, Message.
 
         """
@@ -27,11 +27,36 @@ class UserCashtagBaselineModel:
                 ])
 
     def csv_to_df(self) -> tuple:
+        """Reads in CSV file declared in __init__ (self.rpath) and converts it to a number of Pandas DataFrames.
+            
+            Returns:
+                tuple: Returns tuple of Pandas DataFrames; user features, item features and 
+                    interactions between items.
+
+        """
+
         df = pd.read_csv(self.rpath, sep='\t')
         df_user_features, df_item_features, df_interactions = df[['user_id', 'item_cashtags']], df[['item_id', 'item_timestamp', 'item_body','item_titles', 'item_cashtags', 'item_industries', 'item_sectors']], df[['user_id', 'item_id']]
         return (df_user_features, df_item_features, df_interactions)
 
     def build_id_mappings(self, df_interactions: pd.DataFrame, df_item_features: pd.DataFrame) -> Dataset:
+        """Builds internal indice mapping for user-item interactions and encodes item features.
+
+            Reads in user-item interactions and the features associated with each item and builds a mapping 
+            between the user and item ids from our input data to indices that will be used internally by our model. 
+
+            Item features are further encoded as an argument passed to Dataset.fit. These are supplied as a flat
+            list of unique item features for the entire dataset.
+
+            Args:
+                df_interactions (pd.DataFrame): User-Item interactions DataFrame consisting of user and item IDs.
+                df_item_features (pd.DataFrame): Item IDs and their corresponding features as column separated values.
+
+            Returns:
+                lightfm.data.Dataset: Tool for building interaction and feature matrices, 
+                    taking care of the mapping between user/item ids and feature names and internal feature indices.
+
+        """
         item_industries = list(set('|'.join(df_item_features['item_industries'].tolist()).split('|')))
         item_sectors = list(set('|'.join(df_item_features['item_sectors'].tolist()).split('|')))
         item_cashtags = list(set('|'.join(df_item_features['item_cashtags'].tolist()).split('|')))
@@ -43,7 +68,36 @@ class UserCashtagBaselineModel:
         return (dataset, item_industries, item_sectors, item_cashtags)
 
     def build_interactions_matrix(self, dataset: Dataset, df_interactions: pd.DataFrame) -> tuple:
+        """Builds a matrix of interactions between user and item.
+
+            Takes as params a lightfm.data.Dataset object consisting of mapping between users
+            and items and builds a matrix of interactions.
+
+            Args:
+                dataset (lightfm.data.Dataset): Dataset object consisting of internal user-item mappings.
+                df_interactions (pd.DataFrame): User-Item interactions DataFrame consisting of user and item IDs.
+
+            Returns:
+                tuple: Returns tuple with two scipy.sparse.coo_matrix matrices: the interactions matrix and the corresponding weights matrix.
+
+        """
+
         def gen_rows(df):
+            """Yields 
+
+            Args:
+               df (pd.DataFrame): df_interactions matrix
+
+            Yields:
+                pd.core.frame.Pandas: User-Item interactions DataFrame consisting of user and item IDs
+
+            Examples:
+                Generates a row, line by line of user and item IDs to pass to the lightfm.data.Dataset.build_interactions function.
+
+                >>> print(row)
+                Pandas(user_id=123456, item_id=12345678)
+
+            """
             for row in df.itertuples(index=False):
                 yield row
                 
@@ -51,7 +105,38 @@ class UserCashtagBaselineModel:
         return (interactions, weights)
 
     def build_item_features(self, dataset: Dataset, df_item_features: pd.DataFrame) -> csr_matrix:
+        """Binds item features to item IDs, provided they exist in the fitted model.
+
+            Takes as params a lightfm.data.Dataset object consisting of mapping between users
+            and items and a pd.DataFrame object of the item IDs and their corresponding features.
+
+            Args:
+                dataset (lightfm.data.Dataset): Dataset object consisting of internal user-item mappings.
+                df_item_features (pd.DataFrame): Item IDs and their corresponding features as column separated values.
+
+            Returns:
+                scipy.sparse.csr_matrix (num items, num features): Matrix of item features.
+
+        """
+
         def gen_rows(df):
+            """Yields 
+
+            Args:
+               df (pd.DataFrame): df_item_features matrix
+
+            Yields:
+                pd.core.frame.Pandas: Item IDs and their corresponding features as column separated values.
+
+            Examples:
+                Generates a row, line by line of item IDs and their corresponding features to pass to the 
+                lightfm.data.Dataset.build_item_features function.
+
+                >>> print(row)
+                [12345678, ['Industry', 'Sector', 'Cashtag']]
+
+            """
+
             for row in df.itertuples(index=False):
                 d = row._asdict()
                 item_industries = d['item_industries'].split('|') if '|' in d['item_industries'] else [d['item_industries']]
@@ -63,10 +148,33 @@ class UserCashtagBaselineModel:
         return item_features
 
     def cross_validate_interactions(self, interactions: coo_matrix) -> tuple:
+        """Randomly split interactions between training and testing.
+
+            This function takes an interaction set and splits it into two disjoint sets, a training set and a test set. 
+
+            Args:
+                interactions (scipy.sparse.coo_matrix): Matrix of user-item interactions.
+
+            Returns:
+                tuple: (scipy.sparse.coo_matrix, scipy.sparse.coo_matrix), A tuple of (train data, test data).
+
+        """
+
         train, test = random_train_test_split(interactions)
         return train, test
 
     def cf_model_pure(self, train: coo_matrix, params: tuple) -> LightFM:
+        """Trains a pure collaborative filtering model.
+
+            Args:
+                train (scipy.sparse.coo_matrix): Training set as a COO matrix.
+                params (tuple): A number of hyperparameters for the model, namely NUM_THREADS, NUM_COMPONENTS, NUM_EPOCHS, ITEM_ALPHA.
+
+            Returns:
+                LightFM: A lightFM model.
+
+        """
+
         logger = logging.getLogger()
         NUM_THREADS, NUM_COMPONENTS, NUM_EPOCHS, ITEM_ALPHA = params
         model = LightFM(loss='warp',
@@ -79,6 +187,20 @@ class UserCashtagBaselineModel:
         return model
 
     def hybrid_model(self, params: tuple, train: coo_matrix, item_features: csr_matrix) -> LightFM:
+        """Trains a hybrid collaborative filtering/content model
+
+            Adds user/item features to model to enrich training data.
+
+            Args:
+                params (tuple): A number of hyperparameters for the model, namely NUM_THREADS, NUM_COMPONENTS, NUM_EPOCHS, ITEM_ALPHA.
+                train (scipy.sparse.coo_matrix): Training set as a COO matrix.
+                item_features (scipy.sparse.csr_matrix) : Matrix of item features.
+
+            Returns:
+                LightFM: A lightFM model.
+
+        """
+
         logger = logging.getLogger()
         NUM_THREADS, NUM_COMPONENTS, NUM_EPOCHS, ITEM_ALPHA = params
         # Define a new model instance
@@ -96,11 +218,35 @@ class UserCashtagBaselineModel:
         return model
 
     def evaluate_model(self, model: LightFM, model_name: str, eval_metrics: list, sets: tuple, NUM_THREADS: str, item_features: csr_matrix=None, k: int=None):
+        """Evaluates models on a number of metrics
+
+            Takes model and evaluates it depending on which evaluation metrics are passed in.
+            Has local functions auc, precrec and mrr corresponding to AUC ROC score, Precision@K/Recall@K, 
+            Mean Reciprocal Rank metrics.
+
+            Args:
+                model (lightfm.LightFM): A LightFM model.
+                model_name (str): The type of model being trained, for evaluation output purposes (Collaborative Filtering/Hybrid).
+                eval_metrics (list): A list containing which evaluation metrics to carry out. Can be either of 'auc', 'precrec', 'mrr'
+                sets (tuple): (scipy.sparse.coo_matrix, scipy.sparse.coo_matrix), A tuple of (train data, test data).
+                NUM_THREADS (str): Number of threads to run evaluations on, corresponding to physical cores on system.
+                item_features (scipy.sparse.csr_matrix, optional): Matrix of item features. Defaults to None.
+                k (integer, optional): The k parameter for Precision@K/Recall@K corresponding to Top-N recommendations.
+
+        """
+
         logger = logging.getLogger()
         train, test = sets
         model_name = 'Collaborative Filtering' if model_name == 'cf' else 'Hybrid'
 
         def auc():
+            """Evaluates models on the ROC AUC metric.
+
+            Measure the ROC AUC metric for a model: the probability that a randomly chosen positive example 
+            has a higher score than a randomly chosen negative example. A perfect score is 1.0.
+
+            """
+
             train_auc = auc_score(model,
                             train,
                             item_features=item_features if item_features is not None else None,
@@ -115,6 +261,21 @@ class UserCashtagBaselineModel:
             logger.info(model_name+' test set AUC: %s' % test_auc)
 
         def precrec():
+            """Evaluates models on Precision@K/Recall@K and also outputs F1 Score.
+
+            Measure the precision at k metric for a model: the fraction of known positives in the first k 
+            positions of the ranked list of results. A perfect score is 1.0.
+
+            Measure the recall at k metric for a model: the number of positive items in the first k 
+            positions of the ranked list of results divided by the number of positive items in the test period. #
+            A perfect score is 1.0.
+
+            Compute the F1 score, also known as balanced F-score or F-measure: The F1 score can be interpreted as a weighted 
+            average of the precision and recall, where an F1 score reaches its best value at 1 and worst score at 0. 
+            The relative contribution of precision and recall to the F1 score are equal.
+
+            """
+
             train_precision = precision_at_k(model, 
                                 train, 
                                 k=k, 
@@ -146,6 +307,13 @@ class UserCashtagBaselineModel:
             logger.info(model_name+' test set F1 Score: %s' % (f1_test))
 
         def mrr():
+            """Evaluates models on their Mean Reciprocal Rank.
+
+            Measure the reciprocal rank metric for a model: 1 / the rank of the highest ranked positive example. 
+            A perfect score is 1.0.
+
+            """
+
             train_mrr = reciprocal_rank(model, 
                                 train, 
                                 item_features=item_features if item_features is not None else None, 
@@ -161,6 +329,10 @@ class UserCashtagBaselineModel:
             locals()[metric]()
 
     def run(self):
+        """Function responsible for running the contents of the HybridBaselineModel class in sequence.
+
+        """
+
         self.logger()
         logger = logging.getLogger()
         params = (NUM_THREADS, _, _, _) = (4,30,3,1e-16)
@@ -185,5 +357,5 @@ class UserCashtagBaselineModel:
 
 
 if __name__=="__main__":
-    bm = UserCashtagBaselineModel()
+    bm = HybridBaselineModel()
     bm.run()
