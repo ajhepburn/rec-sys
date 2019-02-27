@@ -5,11 +5,13 @@ from lightfm.cross_validation import random_train_test_split
 from lightfm.evaluation import auc_score, precision_at_k, recall_at_k, reciprocal_rank
 from lightfm import LightFM
 from datetime import datetime
+from collections import Counter
 
 import sys, regex, logging
 
 class HybridBaselineModel:
-    def __init__(self):
+    def __init__(self, model_details):
+        self.model_details = model_details
         self.logpath = './log/models/lfm_hybrid/'
         self.rpath = './data/csv/metadata_clean.csv'
 
@@ -23,7 +25,7 @@ class HybridBaselineModel:
                 level=logging.INFO,
                 format="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s",
                 handlers=[
-                    logging.FileHandler("{0}/{1}_log ({2}).log".format(self.logpath, str(datetime.now())[:-7],'lightfm_hybrid')),
+                    logging.FileHandler("{0}/{1}_log ({2}).log".format(self.logpath, str(datetime.now())[:-7],'hybrid_baseline_'+self.model_details)),
                     logging.StreamHandler(sys.stdout)
                 ])
 
@@ -56,17 +58,22 @@ class HybridBaselineModel:
         Returns:
             lightfm.data.Dataset: Tool for building interaction and feature matrices, 
                 taking care of the mapping between user/item ids and feature names and internal feature indices.
+            item_sectors (list): list of all the unique cashtag sector information in the dataset.
+            item_industries (list): list of all the unique cashtag industries information in the dataset.
+            item_cashtags (list): list of all the unique cashtag information in the dataset.
 
         """
-        item_industries = list(set('|'.join(df_item_features['item_industries'].tolist()).split('|')))
-        item_sectors = list(set('|'.join(df_item_features['item_sectors'].tolist()).split('|')))
-        item_cashtags = list(set('|'.join(df_item_features['item_cashtags'].tolist()).split('|')))
+        item_sectors = list(map('SECTOR:{0}'.format, list(set('|'.join(df_item_features['item_sectors'].tolist()).split('|')))))
+        item_industries = list(map('INDUSTRY:{0}'.format, list(set('|'.join(df_item_features['item_industries'].tolist()).split('|')))))
+        item_cashtags = list(map('TAG:{0}'.format, list(set('|'.join(df_item_features['item_cashtags'].tolist()).split('|')))))
+
+        item_features = item_sectors+item_industries+item_cashtags
         
         dataset = Dataset()
         dataset.fit((x for x in df_interactions['user_id']), 
                     (x for x in df_interactions['item_id']),
-                    item_features=item_industries+item_sectors+item_cashtags)
-        return (dataset, item_industries, item_sectors, item_cashtags)
+                    item_features=item_features)
+        return (dataset, item_sectors, item_industries, item_cashtags)
 
     def build_interactions_matrix(self, dataset: Dataset, df_interactions: pd.DataFrame) -> tuple:
         """Builds a matrix of interactions between user and item.
@@ -130,22 +137,33 @@ class HybridBaselineModel:
                 pd.core.frame.Pandas: Item IDs and their corresponding features as column separated values.
 
             Examples:
-                Generates a row, line by line of item IDs and their corresponding features to pass to the 
-                lightfm.data.Dataset.build_item_features function.
+                Generates a row, line by line of item IDs and their corresponding features/weights to pass to the 
+                lightfm.data.Dataset.build_item_features function. The build_item_features function then normalises
+                these weights per row.
+
+                Also prepends each item with its type for a more accurate model.
 
                 >>> print(row)
-                [12345678, ['Industry', 'Sector', 'Cashtag']]
+                [12345678, {'TAG:[CASHTAG]:2}]
 
             """
 
             for row in df.itertuples(index=False):
                 d = row._asdict()
-                item_industries = d['item_industries'].split('|') if '|' in d['item_industries'] else [d['item_industries']]
-                item_sectors = d['item_sectors'].split('|') if '|' in d['item_sectors'] else [d['item_sectors']]
-                item_cashtags = d['item_cashtags'].split('|') if '|' in d['item_cashtags'] else [d['item_cashtags']]
-                yield [d['item_id'], item_industries+item_sectors+item_cashtags]
+                item_sectors = list(map('SECTOR:{0}'.format, d['item_sectors'].split('|') if '|' in d['item_sectors'] else [d['item_sectors']]))
+                item_industries =  list(map('INDUSTRY:{0}'.format, d['item_industries'].split('|') if '|' in d['item_industries'] else [d['item_industries']]))
+                item_cashtags =  list(map('TAG:{0}'.format, d['item_cashtags'].split('|') if '|' in d['item_cashtags'] else [d['item_cashtags']]))
+
+                weights_t = (Counter(item_sectors), Counter(item_industries), Counter(item_cashtags))
+                for weights_obj in weights_t:
+                    for k, v in weights_obj.items():
+                        yield [d['item_id'], {k:v}]
+
+
+                # item_feature_list = item_sectors+item_industries+item_cashtags
+                # yield [d['item_id'], item_feature_list]
         
-        item_features = dataset.build_item_features(gen_rows(df_item_features))
+        item_features = dataset.build_item_features(gen_rows(df_item_features), normalize=True)
         return item_features
 
     def cross_validate_interactions(self, interactions: coo_matrix) -> tuple:
@@ -339,7 +357,7 @@ class HybridBaselineModel:
         params = (NUM_THREADS, _, _, _) = (4,30,3,1e-16)
 
         df_user_features, df_item_features, df_interactions = self.csv_to_df()
-        dataset, item_industries, item_sectors, item_cashtags = self.build_id_mappings(df_interactions, df_item_features)
+        dataset, item_sectors, item_industries, item_cashtags = self.build_id_mappings(df_interactions, df_item_features)
         
         interactions, _ = self.build_interactions_matrix(dataset, df_interactions)
         item_features = self.build_item_features(dataset, df_item_features)
@@ -350,7 +368,7 @@ class HybridBaselineModel:
         cf_model = self.cf_model_pure(train, params)
         self.evaluate_model(model=cf_model, model_name='cf', eval_metrics=['auc'], sets=(train, test), NUM_THREADS=NUM_THREADS)
 
-        logger.info('There are {0} distinct industries, {1} distinct sectors and {2} distinct cashtags.'.format(len(item_industries), len(item_sectors), len(item_cashtags)))
+        logger.info('There are {0} distinct sectors, {1} distinct industries and {2} distinct cashtags.'.format(len(item_sectors), len(item_industries), len(item_cashtags)))
 
         hybrid_model = self.hybrid_model(params, train, item_features)
         self.evaluate_model(model=hybrid_model, model_name='h', eval_metrics=['auc', 'precrec', 'mrr'], sets=(train, test), NUM_THREADS=NUM_THREADS, item_features=item_features, k=10)
@@ -358,5 +376,5 @@ class HybridBaselineModel:
 
 
 if __name__=="__main__":
-    bm = HybridBaselineModel()
+    bm = HybridBaselineModel('u0_i_sic')
     bm.run()
