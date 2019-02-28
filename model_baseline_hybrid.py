@@ -39,7 +39,7 @@ class HybridBaselineModel:
         """
 
         df = pd.read_csv(self.rpath, sep='\t')
-        df_user_features, df_item_features, df_interactions = df[['user_id', 'item_sectors']], df[['item_id', 'item_timestamp', 'item_body','item_titles', 'item_cashtags', 'item_industries', 'item_sectors']], df[['user_id', 'item_id']]
+        df_user_features, df_item_features, df_interactions = df[['user_id', 'user_location']], df[['item_id', 'item_timestamp', 'item_body','item_titles', 'item_cashtags', 'item_industries', 'item_sectors']], df[['user_id', 'item_id']]
         return (df_user_features, df_item_features, df_interactions)
 
     def build_id_mappings(self, df_interactions: pd.DataFrame, df_user_features: pd.DataFrame, df_item_features: pd.DataFrame) -> Dataset:
@@ -63,11 +63,13 @@ class HybridBaselineModel:
             item_cashtags (list): list of all the unique cashtag information in the dataset.
 
         """
+
+        user_locations = list(map('LOC:{0}'.format, list(set('|'.join(df_user_features['user_location'].tolist()).split('|')))))
         item_sectors = list(map('SECTOR:{0}'.format, list(set('|'.join(df_item_features['item_sectors'].tolist()).split('|')))))
         item_industries = list(map('INDUSTRY:{0}'.format, list(set('|'.join(df_item_features['item_industries'].tolist()).split('|')))))
         item_cashtags = list(map('TAG:{0}'.format, list(set('|'.join(df_item_features['item_cashtags'].tolist()).split('|')))))
 
-        user_features = item_sectors
+        user_features = user_locations
         item_features = item_sectors+item_industries+item_cashtags
         
         dataset = Dataset()
@@ -75,7 +77,7 @@ class HybridBaselineModel:
                     (x for x in df_interactions['item_id']),
                     user_features=user_features,
                     item_features=item_features)
-        return (dataset, item_sectors, item_industries, item_cashtags)
+        return (dataset, user_locations, item_sectors, item_industries, item_cashtags)
 
     def build_interactions_matrix(self, dataset: Dataset, df_interactions: pd.DataFrame) -> tuple:
         """Builds a matrix of interactions between user and item.
@@ -115,7 +117,7 @@ class HybridBaselineModel:
         return (interactions, weights)
 
     def build_user_features(self, dataset: Dataset, df_user_features: pd.DataFrame) -> csr_matrix:
-        df = df_user_features.groupby('user_id')['item_sectors'].apply('|'.join).reset_index()
+        df = df_user_features.groupby('user_id')['user_location'].apply('|'.join).reset_index()
         def gen_rows(df):
             """Yields 
 
@@ -139,11 +141,10 @@ class HybridBaselineModel:
 
             for row in df.itertuples(index=False):
                 d = row._asdict()
-                user_sectors =  list(map('SECTOR:{0}'.format, d['item_sectors'].split('|')))
-                print(user_sectors)
-                sectors_weights = Counter(user_sectors)
+                user_locations =  list(map('LOC:{0}'.format, d['user_location'].split('|')))
+                loc_weights = Counter(user_locations)
 
-                for k, v in sectors_weights.items():
+                for k, v in loc_weights.items():
                     yield [d['user_id'], {k:v}]
 
         user_features = dataset.build_user_features(gen_rows(df), normalize=True)
@@ -405,7 +406,7 @@ class HybridBaselineModel:
         params = (NUM_THREADS, _, _, _) = (4,30,3,1e-16)
 
         df_user_features, df_item_features, df_interactions = self.csv_to_df()
-        dataset, item_sectors, item_industries, item_cashtags = self.build_id_mappings(df_interactions, df_user_features, df_item_features)
+        dataset, user_locations, item_sectors, item_industries, item_cashtags = self.build_id_mappings(df_interactions, df_user_features, df_item_features)
         
         interactions, _ = self.build_interactions_matrix(dataset, df_interactions)
 
@@ -419,7 +420,7 @@ class HybridBaselineModel:
         cf_model = self.cf_model_pure(train, params)
         self.evaluate_model(model=cf_model, model_name='cf', eval_metrics=['auc'], sets=(train, test), NUM_THREADS=NUM_THREADS)
 
-        logger.info('There are {0} distinct sectors, {1} distinct industries and {2} distinct cashtags.'.format(len(item_sectors), len(item_industries), len(item_cashtags)))
+        logger.info('There are {0} distinct user locations, {1} distinct sectors, {2} distinct industries and {3} distinct cashtags.'.format(len(user_locations), len(item_sectors), len(item_industries), len(item_cashtags)))
 
         hybrid_model = self.hybrid_model(params, train, user_features, item_features)
         self.evaluate_model(model=hybrid_model, model_name='h', eval_metrics=['auc', 'precrec', 'mrr'], sets=(train, test), NUM_THREADS=NUM_THREADS, user_features=user_features, item_features=item_features, k=10)
