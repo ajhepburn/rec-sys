@@ -148,6 +148,14 @@ class AttributeCleaner:
         logger.info("Written CSV at {0} with {1} entries".format(str(datetime.now())[:-7], len(self.df.index)))
 
     def clean_timestamps(self):
+        """Converts StockTwits UTC timestamp format to UNIX epoch.
+
+        Examples:
+            >>> print(arrow.get('2017-02-01 19:16:54', 'YYYY-MM-DD HH:mm:ss').timestamp)
+                1485976614
+
+        """
+        
         logger = logging.getLogger()
         self.df['item_timestamp'] = self.df['item_timestamp'].str.replace('T', ' ')
         self.df['item_timestamp'] = self.df['item_timestamp'].str.replace('Z', '')
