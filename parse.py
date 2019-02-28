@@ -94,7 +94,7 @@ class AttributeParser:
 
 
 class AttributeCleaner:
-    def __init__(self, tweet_frequency):
+    def __init__(self, tweet_frequency=160):
         self.logpath = './log/io/csv/cleaner/'
         self.rpath = './data/csv/metadata.csv'
         self.df = self.csv_to_dataframe()
@@ -137,6 +137,7 @@ class AttributeCleaner:
 
     def iterate_location_data(self, d):
         logger = logging.getLogger()
+        lookup = {**us_states, **ca_prov}
 
         for i, data in d.iterrows():
             doc = self.nlp(data['user_location'])
@@ -149,16 +150,12 @@ class AttributeCleaner:
                             country_conversions = {'taiwan':'twn', 'czech republic': 'cze'}
                             location[location.index(p)] = country_conversions[p.lower()] if p.lower() in country_conversions else pycountry.countries.get(name=p).alpha_3
                         if len(p) == 2:
-                            lookup = {**us_states, **ca_prov}
-                            if p in lookup:
-                                province_full = lookup.get(p, None)
+                            province_full = lookup.get(p.upper(), None)
+                            if province_full:
                                 if province_full is 'Louisiana' and location.index(p) is 0: province_full = 'Los Angeles'
                                 location = [province_full if x==p else x for x in location]
-                                # location = ['NewYork' if x=='NewYorkCity' else x for x in location]
                     location = list(unique_everseen([x.replace(' ','').lower() for x in location]))
-                    d.set_value(i,'user_location','|'.join(location))
-                    d.set_value(i, 'user_loc_check', True)
-                    # d[i, 'user_location'], d[i, 'user_loc_check'] = loc_string, True
+                    d.at[i, 'user_location'], d.at[i, 'user_loc_check'] = '|'.join(location), True
                 except AttributeError:
                     continue
         return d
