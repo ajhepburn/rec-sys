@@ -117,7 +117,7 @@ class HybridBaselineModel:
         return (interactions, weights)
 
     def build_user_features(self, dataset: Dataset, df_user_features: pd.DataFrame) -> csr_matrix:
-        df = df_user_features.groupby('user_id')['user_location'].apply('|'.join).reset_index()
+        # df = df_user_features.groupby('user_id')['user_location'].apply('|'.join).reset_index()
         def gen_rows(df):
             """Yields 
 
@@ -141,13 +141,14 @@ class HybridBaselineModel:
 
             for row in df.itertuples(index=False):
                 d = row._asdict()
-                user_locations =  list(map('LOC:{0}'.format, d['user_location'].split('|')))
-                loc_weights = Counter(user_locations)
+                user_locations = list(map('LOC:{0}'.format, d['user_location'].split('|') if '|' in d['user_location'] else [d['user_location']]))
+                yield [d['user_id'], user_locations]
+                # loc_weights = Counter(user_locations)
 
-                for k, v in loc_weights.items():
-                    yield [d['user_id'], {k:v}]
+                # for k, v in loc_weights.items():
+                #     yield [d['user_id'], {k:v}]
 
-        user_features = dataset.build_user_features(gen_rows(df), normalize=True)
+        user_features = dataset.build_user_features(gen_rows(df_user_features))
         return user_features
 
     def build_item_features(self, dataset: Dataset, df_item_features: pd.DataFrame) -> csr_matrix:
@@ -243,7 +244,7 @@ class HybridBaselineModel:
         model = model.fit(train, epochs=NUM_EPOCHS, num_threads=NUM_THREADS)
         return model
 
-    def hybrid_model(self, params: tuple, train: coo_matrix, user_features: csr_matrix, item_features: csr_matrix) -> LightFM:
+    def hybrid_model(self, params: tuple, train: coo_matrix, user_features: csr_matrix=None, item_features: csr_matrix=None) -> LightFM:
         """Trains a hybrid collaborative filtering/content model
 
         Adds user/item features to model to enrich training data.
