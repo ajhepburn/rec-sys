@@ -52,8 +52,8 @@ class HybridBaselineModel:
         list of unique item features for the entire dataset.
 
         Args:
-            df_interactions (pd.DataFrame): User-Item interactions DataFrame consisting of user and item IDs.
-            df_item_features (pd.DataFrame): Item IDs and their corresponding features as column separated values.
+            df_interactions (pandas.DataFrame): User-Item interactions DataFrame consisting of user and item IDs.
+            df_item_features (pandas.DataFrame): Item IDs and their corresponding features as column separated values.
 
         Returns:
             lightfm.data.Dataset: Tool for building interaction and feature matrices, 
@@ -87,7 +87,7 @@ class HybridBaselineModel:
 
         Args:
             dataset (lightfm.data.Dataset): Dataset object consisting of internal user-item mappings.
-            df_interactions (pd.DataFrame): User-Item interactions DataFrame consisting of user and item IDs.
+            df_interactions (pandas.DataFrame): User-Item interactions DataFrame consisting of user and item IDs.
 
         Returns:
             tuple: Returns tuple with two scipy.sparse.coo_matrix matrices: the interactions matrix and the corresponding weights matrix.
@@ -101,7 +101,7 @@ class HybridBaselineModel:
                df (pd.DataFrame): df_interactions matrix
 
             Yields:
-                pd.core.frame.Pandas: User-Item interactions DataFrame consisting of user and item IDs
+                pandas.DataFrame: User-Item interactions DataFrame consisting of user and item IDs
 
             Examples:
                 Generates a row, line by line of user and item IDs to pass to the lightfm.data.Dataset.build_interactions function.
@@ -122,10 +122,10 @@ class HybridBaselineModel:
             """Yields 
 
             Args:
-               df (pd.DataFrame): df_user_features matrix
+               df (pandas.DataFrame): df_user_features matrix
 
             Yields:
-                pd.core.frame.Pandas: User IDs and their corresponding features as column separated values.
+                pandas.DataFrame: User IDs and their corresponding features as column separated values.
 
             Examples:
                 Generates a row, line by line of item IDs and their corresponding features/weights to pass to the 
@@ -159,7 +159,7 @@ class HybridBaselineModel:
 
         Args:
             dataset (lightfm.data.Dataset): Dataset object consisting of internal user-item mappings.
-            df_item_features (pd.DataFrame): Item IDs and their corresponding features as column separated values.
+            df_item_features (pandas.DataFrame): Item IDs and their corresponding features as column separated values.
 
         Returns:
             scipy.sparse.csr_matrix (num items, num features): Matrix of item features.
@@ -170,10 +170,10 @@ class HybridBaselineModel:
             """Yields 
 
             Args:
-               df (pd.DataFrame): df_item_features matrix
+               df (pandas.DataFrame): df_item_features matrix
 
             Yields:
-                pd.core.frame.Pandas: Item IDs and their corresponding features as column separated values.
+                pandas.DataFrame: Item IDs and their corresponding features as column separated values.
 
             Examples:
                 Generates a row, line by line of item IDs and their corresponding features/weights to pass to the 
@@ -398,10 +398,6 @@ class HybridBaselineModel:
             locals()[metric]()
 
     def run(self):
-        """Function responsible for running the contents of the HybridBaselineModel class in sequence.
-
-        """
-
         self.logger()
         logger = logging.getLogger()
         params = (NUM_THREADS, _, _, _) = (4,30,3,1e-16)
