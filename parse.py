@@ -4,7 +4,7 @@ import pandas as pd
 import spacy, pycountry, multiprocessing
 from  more_itertools import unique_everseen
 
-from placenames import us_states, ca_prov, countries
+from utils.placenames import us_states, ca_prov, countries
 
 
 class AttributeParser:
@@ -94,12 +94,14 @@ class AttributeParser:
 
 
 class AttributeCleaner:
-    def __init__(self):
+    def __init__(self, tweet_frequency):
         self.logpath = './log/io/csv/cleaner/'
         self.rpath = './data/csv/metadata.csv'
         self.df = self.csv_to_dataframe()
         spacy.prefer_gpu()
         self.nlp = spacy.load('en')
+
+        self.tweet_freq = tweet_frequency
 
     def logger(self):
         """ Sets the logger configuration to report to both std.out and to log to ./log/io/csv/cleaner
@@ -134,9 +136,9 @@ class AttributeCleaner:
         logger.info("Written CSV at {0} with {1} entries".format(str(datetime.now())[:-7], len(self.df.index)))
 
     def iterate_location_data(self, d):
+        logger = logging.getLogger()
+
         for i, data in d.iterrows():
-            # sys.stdout.write(">> Currently on row: {}; Currently iterrated {:.2f}% of rows\r".format(i, (i + 1)/data_count * 100))
-            # sys.stdout.flush()
             doc = self.nlp(data['user_location'])
             gpe_check = all(ent.label_ == 'GPE' for ent in doc.ents)
             if gpe_check and doc.ents:
@@ -152,11 +154,11 @@ class AttributeCleaner:
                                 province_full = lookup.get(p, None)
                                 if province_full is 'Louisiana' and location.index(p) is 0: province_full = 'Los Angeles'
                                 location = [province_full if x==p else x for x in location]
-                                location = ['NewYork' if x=='NewYorkCity' else x for x in location]
-                    location = [x.replace(' ','').lower() for x in location]
-                    location = list(unique_everseen(location))
-                    loc_string = '|'.join(location)
-                    d[i, 'user_location'], d[i, 'user_loc_check'] = loc_string, True
+                                # location = ['NewYork' if x=='NewYorkCity' else x for x in location]
+                    location = list(unique_everseen([x.replace(' ','').lower() for x in location]))
+                    d.set_value(i,'user_location','|'.join(location))
+                    d.set_value(i, 'user_loc_check', True)
+                    # d[i, 'user_location'], d[i, 'user_loc_check'] = loc_string, True
                 except AttributeError:
                     continue
         return d
@@ -192,7 +194,7 @@ class AttributeCleaner:
         """
 
         logger = logging.getLogger()
-        data_count, k = len(self.df.index), 160
+        data_count, k = len(self.df.index), self.tweet_freq
         cleaned_users = self.df.groupby('user_id').filter(lambda x: len(x) > k)
         logger.info("Removed users with less than {0} tweets. Size of DataFrame: {1} -> {2}".format(k, data_count, len(cleaned_users.index)))
         self.df = cleaned_users
@@ -211,7 +213,7 @@ class AttributeCleaner:
 
 
 if __name__ == "__main__":
-    # ab = AttributeParser('2017_02_01')
-    # ab.run()
-    ac = AttributeCleaner()
+    ab = AttributeParser('2017_02_01') # 2017_02_01
+    ab.run()
+    ac = AttributeCleaner(tweet_frequency=160)
     ac.run()
