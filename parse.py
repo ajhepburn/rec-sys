@@ -1,7 +1,7 @@
 import os, json, sys, logging, csv
 from datetime import datetime
 import pandas as pd
-import spacy, pycountry, multiprocessing
+import spacy, pycountry, multiprocessing, arrow
 from  more_itertools import unique_everseen
 
 from utils.placenames import us_states, ca_prov, countries
@@ -147,6 +147,16 @@ class AttributeCleaner:
         self.df.to_csv(path_or_buf='./data/csv/metadata_clean.csv', index=False, sep='\t')
         logger.info("Written CSV at {0} with {1} entries".format(str(datetime.now())[:-7], len(self.df.index)))
 
+    def clean_timestamps(self):
+        logger = logging.getLogger()
+        self.df['item_timestamp'] = self.df['item_timestamp'].str.replace('T', ' ')
+        self.df['item_timestamp'] = self.df['item_timestamp'].str.replace('Z', '')
+        logger.info('Starting formatted timestamp to UNIX timestamp conversion...')
+        for i, data in self.df.iterrows():
+            ts = arrow.get(data['item_timestamp'], 'YYYY-MM-DD HH:mm:ss').timestamp
+            self.df.at[i, 'item_timestamp'] = ts
+        logger.info('UNIX timestamp conversion complete')
+
     def iterate_location_data(self, d) -> pd.DataFrame:
         """Uses spaCy's NER to detect locations in 'user_location' DataFrame field. Malformed locations are marked and later dropped.
         
@@ -236,9 +246,11 @@ class AttributeCleaner:
 
     def run(self):
         self.logger()
+        self.clean_timestamps()
         self.clean_rare_users()
         self.clean_user_locations()
         self.dataframe_to_csv()
+        # self.dataframe_to_csv()
         # self.clean_user_locations()
 
 
@@ -247,7 +259,7 @@ class AttributeCleaner:
 
 
 if __name__ == "__main__":
-    ab = AttributeParser('2017_02_01') # 2017_02_01
-    ab.run()
+    # ab = AttributeParser('2017_02_01') # 2017_02_01
+    # ab.run()
     ac = AttributeCleaner(tweet_frequency=160)
     ac.run()

@@ -68,9 +68,10 @@ class HybridBaselineModel:
         item_sectors = list(map('SECTOR:{0}'.format, list(set('|'.join(df_item_features['item_sectors'].tolist()).split('|')))))
         item_industries = list(map('INDUSTRY:{0}'.format, list(set('|'.join(df_item_features['item_industries'].tolist()).split('|')))))
         item_cashtags = list(map('TAG:{0}'.format, list(set('|'.join(df_item_features['item_cashtags'].tolist()).split('|')))))
+        item_timestamp = list(map('TIME:{0}'.format, list(df_item_features['item_timestamp'])))
 
         user_features = user_locations
-        item_features = item_sectors+item_industries+item_cashtags
+        item_features = item_timestamp+item_sectors+item_industries+item_cashtags
         
         dataset = Dataset()
         dataset.fit((x for x in df_interactions['user_id']), 
@@ -189,11 +190,12 @@ class HybridBaselineModel:
 
             for row in df.itertuples(index=False):
                 d = row._asdict()
+                item_timestamp = 'TIME:'+str(d['item_timestamp'])
                 item_sectors = list(map('SECTOR:{0}'.format, d['item_sectors'].split('|') if '|' in d['item_sectors'] else [d['item_sectors']]))
                 item_industries =  list(map('INDUSTRY:{0}'.format, d['item_industries'].split('|') if '|' in d['item_industries'] else [d['item_industries']]))
                 item_cashtags =  list(map('TAG:{0}'.format, d['item_cashtags'].split('|') if '|' in d['item_cashtags'] else [d['item_cashtags']]))
 
-                weights_t = (Counter(item_sectors), Counter(item_industries), Counter(item_cashtags))
+                weights_t = ({item_timestamp:1}, Counter(item_sectors), Counter(item_industries), Counter(item_cashtags))
                 for weights_obj in weights_t:
                     for k, v in weights_obj.items():
                         yield [d['item_id'], {k:v}]
