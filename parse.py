@@ -163,13 +163,13 @@ class AttributeCleaner:
 
     def clean_user_locations(self):
         logger = logging.getLogger()
-        num_processes = int(multiprocessing.cpu_count()/2)
+        num_processes = multiprocessing.cpu_count()
 
         self.df['user_location'] = self.df['user_location'].astype(str)
         self.df['user_loc_check'] = False
         self.df = self.df[~self.df.user_location.str.contains(r'[0-9]')]
 
-        chunk_size = int(self.df.shape[0]/num_processes)
+        chunk_size = int(self.df.shape[0]/(num_processes*4))
         chunks = [self.df.ix[self.df.index[i:i + chunk_size]] for i in range(0, self.df.shape[0], chunk_size)]
         index_size_original = len(self.df.index)
 
@@ -181,9 +181,10 @@ class AttributeCleaner:
         for i in range(len(result)):
             self.df.ix[result[i].index] = result[i]
 
-        cleaned_users = self.df[self.df.user_lock_check]
-        logger.info("Removed users with malformed location information. Size of DataFrame: {1} -> {2}".format(index_size_original, len(cleaned_users.index)))
+        cleaned_users = self.df[self.df.user_loc_check]
+        logger.info("Removed users with malformed location information. Size of DataFrame: {0} -> {1}".format(index_size_original, len(cleaned_users.index)))
         self.df = cleaned_users
+        self.df.drop('user_loc_check', axis=1)
 
     def clean_rare_users(self):
         """ Removes users who have made less than k tweets, outputting change of entry count
