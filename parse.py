@@ -262,12 +262,32 @@ class AttributeCleaner:
         # self.clean_user_locations()
 
 
+class EmbeddingParser:
+    def __init__(self):
+        pass
 
+    def csv_to_dataframe(self) -> pd.DataFrame:
+        """Reads in CSV file declared in __init__ (self.rpath) and converts it to a number of Pandas DataFrames.
+            
+        Returns:
+            pandas.DataFrame: Returns metadata CSV file as pandas DataFrame.
+
+        """
+
+        logger = logging.getLogger()
+        data = pd.read_csv(self.rpath, delimiter='\t')
+        logger.info("Read file with {0} entries".format(len(data.index)))
+        return data[['item_id', 'item_body', 'item_sectors', 'item_industries']]
+    
+    def run(self):
+        print(self.csv_to_dataframe)
 
 
 
 if __name__ == "__main__":
     # ab = AttributeParser('2017_02_01') # 2017_02_01
     # ab.run()
-    ac = AttributeCleaner(tweet_frequency=160)
-    ac.run()
+    # ac = AttributeCleaner(tweet_frequency=160)
+    # ac.run()
+    embd = EmbeddingParser()
+    embd.run()
