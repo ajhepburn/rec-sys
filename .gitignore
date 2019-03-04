@@ -2,12 +2,10 @@ models/
 data/
 log/
 legacy/
+embeddings/
 utils/
 .vscode
 __pycache__
 
 word2vecReader.py
 word2vecReaderUtils.py
-
-model_keras_bc.py
-model_lfm_hybrid.py
