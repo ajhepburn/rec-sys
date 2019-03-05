@@ -40,11 +40,11 @@ class AttributeParser:
 
         d = json.loads(l)['data']
         symbols = d.get('symbols', False)
-        titles, tag_ids, cashtags, trending_scores, watchlist_counts, exchanges, industries, sectors = [], [], [], [], [], [], [], []
+        arr = (titles, tag_ids, cashtags, trending_scores, watchlist_counts, exchanges, industries, sectors) = [], [], [], [], [], [], [], []
 
         if symbols:                     # Checks to see if cashtags exist in tweet
             for s in symbols:
-                check = (s_title, s_id, s_symbol, s_trending_score, s_watchlist_count, s_exchange, s_industry, s_sector) = s.get('title'), s.get('id'), s.get('symbol'), s.get('trending_score'), s.get('watchlist_count'), s.get('exchange'), s.get('industry'), s.get('sector')  # Check to see if a cashtag contains an 'Industry' tag, otherwise skip
+                check = (s_id, s_title, s_symbol, s_trending_score, s_watchlist_count, s_exchange, s_industry, s_sector) = s.get('id'), s.get('title'), s.get('symbol'), s.get('trending_score'), s.get('watchlist_count'), s.get('exchange'), s.get('industry'), s.get('sector')  # Check to see if a cashtag contains an 'Industry' tag, otherwise skip
                 if not all(check):
                     continue
 
@@ -52,22 +52,9 @@ class AttributeParser:
                 item_id, item_timestamp, item_body = d.get('id'), d.get('created_at'), d.get('body').replace('\t',' ').replace('\n','')
 
                 titles[len(titles):], tag_ids[len(tag_ids):], cashtags[len(cashtags):], trending_scores[len(trending_scores):], watchlist_counts[len(watchlist_counts):], exchanges[len(exchanges):], industries[len(industries):], sectors[len(sectors):] = tuple(zip((s_title, s_id, s_symbol, s_trending_score, s_watchlist_count, s_exchange, s_industry, s_sector)))
-                d = {
-                    'user_id': user_id,
-                    'user_location': user_location,
-                    'item_id': item_id,
-                    'item_timestamp': item_timestamp,
-                    'item_body': item_body,
-                    'item_titles': '|'.join(map(str, titles)),
-                    'item_tag_ids': '|'.join(map(str, tag_ids)),
-                    'item_cashtags': '|'.join(map(str, cashtags)),
-                    'item_tag_trending_score': '|'.join(map(str, trending_scores)),
-                    'item_tag_watchlist_count': '|'.join(map(str, watchlist_counts)),
-                    'item_exchanges': '|'.join(map(str, exchanges)), 
-                    'item_industries': '|'.join(map(str, industries)), 
-                    'item_sectors': '|'.join(map(str, sectors))
-                }    
-                return d if all(check) else None
+
+        return (user_id, user_location, item_id, item_timestamp, item_body, titles, tag_ids, cashtags, trending_scores, watchlist_counts, exchanges, industries, sectors) if all(arr) else ((None),)*13
+                #return out_dict
                  
     def file_writer(self) -> int:
         """ Responsible for writing to ct_industry.csv in ./data/csv/ and logging each file read.
@@ -86,14 +73,15 @@ class AttributeParser:
             writer = csv.DictWriter(stocktwits_csv, fieldnames=fields, delimiter='\t')
             writer.writeheader()
             line_count = 0
+
             for fp in self.files:
                 logger.info('Reading file {0}'.format(fp))
                 with open(os.path.join(self.rpath, fp)) as f:
                     for l in f:
-                        parsed_data = self.parse(l)
-                        if not parsed_data:
+                        if not all(self.parse(l)):
                             continue
-                        writer.writerow(parsed_data)
+                        user_id, user_location, item_id, item_timestamp, item_body, titles, item_tag_ids, cashtags, trend_scores, watch_counts, exchanges, industries, sectors = self.parse(l)
+                        writer.writerow({'user_id':user_id, 'item_id':item_id, 'user_location':user_location, 'item_body':item_body,'item_timestamp':item_timestamp, 'item_titles':'|'.join(map(str, titles)),'item_tag_ids':'|'.join(map(str, item_tag_ids)),'item_cashtags':'|'.join(map(str, cashtags)),'item_tag_trending_score':'|'.join(map(str, trend_scores)), 'item_tag_watchlist_count':'|'.join(map(str, watch_counts)), 'item_exchanges':'|'.join(map(str, exchanges)),'item_industries':'|'.join(map(str, industries)),'item_sectors':'|'.join(map(str, sectors))})
                         line_count+=1
         
         return line_count
