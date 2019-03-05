@@ -77,6 +77,19 @@ class AttributeCleaner:
             if not utils.tokenise(row['item_body']): d.at[i, 'user_token_check'] = False
         return d
 
+    # def clean_empty_trending_scores(self):
+    #     logger = logging.getLogger()
+    #     data_count = len(self.df.index)
+    #     self.df = self.df[self.df.item_tag_trending_score != 0]
+    #     self.df = self.df[self.df.item_tag_trending_score != None]
+    #     logger.info("Removed symbols with no trending score data. Size of DataFrame: {0} -> {1}".format(data_count, len(self.df.index)))
+
+    # def clean_empty_watchlist(self):
+    #     logger = logging.getLogger()
+    #     data_count = len(self.df.index)
+    #     self.df = self.df[self.df.item_tag_watchlist_count != 0]
+    #     self.df = self.df[self.df.item_tag_watchlist_count != None]
+    #     logger.info("Removed symbols for which no users watching. Size of DataFrame: {0} -> {1}".format(data_count, len(self.df.index)))
 
     def clean_notokens(self):
         """Cleans tweets which do not have a minimum number of tokens.
@@ -194,10 +207,10 @@ class AttributeCleaner:
 
     def run(self):
         self.logger()
-        self.clean_timestamps()
         self.clean_rare_users()
         self.clean_notokens()
         self.clean_user_locations()
+        self.clean_timestamps()
         self.dataframe_to_csv()
 
 if __name__ == "__main__":

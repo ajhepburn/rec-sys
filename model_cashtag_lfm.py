@@ -10,50 +10,6 @@ import numpy as np
 
 import logging, sys
 
-class CashtagParser:
-    def __init__(self):
-        self.rpath = './data/csv/metadata_clean.csv'
-        self.wpath = './data/csv/cashtags_clean.csv'
-
-    def conversion_to_cashtag_orientation(self):
-        def explode(df, lst_cols, fill_value='', preserve_index=False):
-            # make sure `lst_cols` is list-alike
-            if (lst_cols is not None
-                and len(lst_cols) > 0
-                and not isinstance(lst_cols, (list, tuple, np.ndarray, pd.Series))):
-                lst_cols = [lst_cols]
-            # all columns except `lst_cols`
-            idx_cols = df.columns.difference(lst_cols)
-            # calculate lengths of lists
-            lens = df[lst_cols[0]].str.len()
-            # preserve original index values    
-            idx = np.repeat(df.index.values, lens)
-            # create "exploded" DF
-            res = (pd.DataFrame({
-                        col:np.repeat(df[col].values, lens)
-                        for col in idx_cols},
-                        index=idx)
-                    .assign(**{col:np.concatenate(df.loc[lens>0, col].values)
-                                    for col in lst_cols}))
-            # append those rows that have empty lists
-            if (lens == 0).any():
-                # at least one list in cells is empty
-                res = (res.append(df.loc[lens==0, idx_cols], sort=False)
-                        .fillna(fill_value))
-            # revert the original index order
-            res = res.sort_index()
-            # reset index if requested
-            if not preserve_index:        
-                res = res.reset_index(drop=True)
-            return res
-
-        df = pd.read_csv(self.rpath, sep='\t')
-        df = df.drop(['user_loc_check', 'user_token_check'], axis=1)
-        for el in ('item_titles','item_cashtags', 'item_industries', 'item_sectors', 'item_exchanges'):
-            df[el] = df[el].apply(lambda x: x.split('|') if '|' in x else [x])
-        df0 = explode(df, ['item_titles','item_cashtags','item_exchanges','item_industries', 'item_sectors'], fill_value='')
-        df0.to_csv(self.wpath, sep='\t')
-
 
 class HybridBaselineCashtagRecommender:
     def __init__(self):
@@ -89,9 +45,11 @@ class HybridBaselineCashtagRecommender:
 
     def build_id_mappings(self, df_interactions: pd.DataFrame, df_user_features: pd.DataFrame, df_item_features: pd.DataFrame) -> Dataset:
         user_locations = list(map('LOC:{0}'.format, list(set('|'.join(df_user_features['user_location'].tolist()).split('|')))))
-        item_exchanges = list(map('EXCH:{0}'.format, list(set('|'.join(df_item_features['item_exchanges'].tolist()).split('|')))))
-        item_sectors = list(map('SECTOR:{0}'.format, list(set('|'.join(df_item_features['item_sectors'].tolist()).split('|')))))
-        item_industries = list(map('INDUSTRY:{0}'.format, list(set('|'.join(df_item_features['item_industries'].tolist()).split('|')))))
+        item_exchanges = list(map('EXCH:{0}'.format, list(set(df_item_features['item_exchanges'].tolist()))))
+        item_sectors = list(map('SECTOR:{0}'.format, list(set(df_item_features['item_sectors'].tolist()))))
+        item_industries = list(map('INDUSTRY:{0}'.format, list(set(df_item_features['item_industries'].tolist()))))
+        item_trending_scores = list(map('TS:{0}'.format, list(set(df_item_features['item_tag_trending_score'].tolist()))))
+        item_watchlist_counts = list(map('WC:{0}'.format, list(set(df_item_features['item_tag_watchlist_count'].tolist()))))
 
         user_features = user_locations
         item_features = item_exchanges+item_sectors+item_industries
@@ -213,7 +171,7 @@ class HybridBaselineCashtagRecommender:
 
             for row in df.itertuples(index=False):
                 d = row._asdict()
-                item_exchange, item_sector, item_industry = "EXCH:"+d['item_exchanges'], "SECTOR:"+d['item_sectors'], "INDUSTRY:"+d['item_industries']
+                item_tag_trending_score, item_watchlist_count, item_exchange, item_sector, item_industry = "WC:"+d['item_tag_watchlist_count'],"TS:"+d['item_tag_trending_score'], "EXCH:"+d['item_exchanges'], "SECTOR:"+d['item_sectors'], "INDUSTRY:"+d['item_industries']
                 yield [d['item_cashtags'], [item_exchange, item_sector, item_industry]]
 
                 # weights_t = ({item_timestamp:1}, Counter(item_sectors), Counter(item_industries), Counter(item_cashtags))
@@ -431,7 +389,7 @@ class HybridBaselineCashtagRecommender:
         df_interactions = data[['user_id', 'item_cashtags']]
         df_interactions = df_interactions.groupby(['user_id','item_cashtags']).size().reset_index() \
                                                .rename(columns={0:'interactions'})
-        df_item_features = data[['item_titles','item_cashtags', 'item_exchanges','item_sectors', 'item_industries']].drop_duplicates()
+        df_item_features = data[['item_titles','item_cashtags', 'item_tag_trending_score','item_exchanges','item_sectors', 'item_industries']].drop_duplicates()
         df_user_features = data[['user_id', 'user_location']].drop_duplicates()
 
         dataset = self.build_id_mappings(df_interactions, df_user_features, df_item_features)
@@ -449,7 +407,5 @@ class HybridBaselineCashtagRecommender:
         
 
 if __name__ == "__main__":
-    # cashparse = CashtagParser()
-    # cashparse.conversion_to_cashtag_orientation()
     cashrec = HybridBaselineCashtagRecommender()
     cashrec.run()
