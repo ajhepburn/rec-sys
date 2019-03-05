@@ -138,13 +138,13 @@ class CashtagParser:
             df[el] = df[el].apply(lambda x: x.split('|') if '|' in x else [x])
         df0 = explode(df, ['item_titles','item_cashtags','item_tag_trending_score','item_tag_watchlist_count','item_exchanges','item_industries', 'item_sectors'], fill_value='')
         
-        df0['item_tag_trending_score'] = df0['item_tag_trending_score'].astype(float)
+        df0['item_tag_trending_score'], df0['item_tag_watchlist_count'] = df0['item_tag_trending_score'].astype(float), df0['item_tag_watchlist_count'].astype(int)
         df0['item_tag_trending_score'] = (df0['item_tag_trending_score'] - min(df0['item_tag_trending_score']))/(max(df0['item_tag_trending_score']) - min(df0['item_tag_trending_score']))
-
+        df0['item_tag_watchlist_count'] = (df0['item_tag_watchlist_count'] - min(df0['item_tag_watchlist_count']))/(max(df0['item_tag_watchlist_count']) - min(df0['item_tag_watchlist_count']))
         df0.to_csv(self.wpath, sep='\t')
 
 if __name__ == "__main__":
-    # ab = AttributeParser('2017_02_01') # 2017_02_01
+    # ab = AttributeParser('2017_04_01') # 2017_02_01
     # ab.run()
     ctp = CashtagParser()
     ctp.conversion_to_cashtag_orientation()

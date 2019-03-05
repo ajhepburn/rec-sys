@@ -8,7 +8,7 @@ from more_itertools import unique_everseen
 from embed import EmbeddingTrainer
 
 class AttributeCleaner:
-    def __init__(self, tweet_frequency=160):
+    def __init__(self, tweet_frequency=800):
         self.logpath = './log/io/csv/cleaner/'
         self.rpath = './data/csv/metadata.csv'
         self.df = self.csv_to_dataframe()
@@ -214,5 +214,5 @@ class AttributeCleaner:
         self.dataframe_to_csv()
 
 if __name__ == "__main__":
-    cleaner = AttributeCleaner()
+    cleaner = AttributeCleaner(tweet_frequency=450)
     cleaner.run()

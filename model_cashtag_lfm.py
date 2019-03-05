@@ -48,11 +48,11 @@ class HybridBaselineCashtagRecommender:
         item_exchanges = list(map('EXCH:{0}'.format, list(set(df_item_features['item_exchanges'].tolist()))))
         item_sectors = list(map('SECTOR:{0}'.format, list(set(df_item_features['item_sectors'].tolist()))))
         item_industries = list(map('INDUSTRY:{0}'.format, list(set(df_item_features['item_industries'].tolist()))))
-        item_trending_scores = list(map('TS:{0}'.format, list(set(df_item_features['item_tag_trending_score'].tolist()))))
-        item_watchlist_counts = list(map('WC:{0}'.format, list(set(df_item_features['item_tag_watchlist_count'].tolist()))))
+        # item_trending_scores = list(map('TS:{0}'.format, list(set(df_item_features['item_tag_trending_score'].tolist()))))
+        # item_watchlist_counts = list(map('WC:{0}'.format, list(set(df_item_features['item_tag_watchlist_count'].tolist()))))
 
         user_features = user_locations
-        item_features = item_exchanges+item_sectors+item_industries
+        item_features = list(set(df_item_features['item_tag_trending_score'].tolist()))+list(set(df_item_features['item_tag_watchlist_count'].tolist()))+item_exchanges+item_sectors+item_industries
 
         dataset = Dataset()
         dataset.fit((x for x in df_interactions['user_id']), 
@@ -171,8 +171,8 @@ class HybridBaselineCashtagRecommender:
 
             for row in df.itertuples(index=False):
                 d = row._asdict()
-                item_tag_trending_score, item_watchlist_count, item_exchange, item_sector, item_industry = "WC:"+d['item_tag_watchlist_count'],"TS:"+d['item_tag_trending_score'], "EXCH:"+d['item_exchanges'], "SECTOR:"+d['item_sectors'], "INDUSTRY:"+d['item_industries']
-                yield [d['item_cashtags'], [item_exchange, item_sector, item_industry]]
+                item_tag_trending_score, item_tag_watchlist_count, item_exchange, item_sector, item_industry = d['item_tag_trending_score'], d['item_tag_watchlist_count'], "EXCH:"+d['item_exchanges'], "SECTOR:"+d['item_sectors'], "INDUSTRY:"+d['item_industries']
+                yield [d['item_cashtags'], [item_tag_trending_score, item_tag_watchlist_count, item_exchange, item_sector, item_industry]]
 
                 # weights_t = ({item_timestamp:1}, Counter(item_sectors), Counter(item_industries), Counter(item_cashtags))
                 # for weights_obj in weights_t:
@@ -389,7 +389,7 @@ class HybridBaselineCashtagRecommender:
         df_interactions = data[['user_id', 'item_cashtags']]
         df_interactions = df_interactions.groupby(['user_id','item_cashtags']).size().reset_index() \
                                                .rename(columns={0:'interactions'})
-        df_item_features = data[['item_titles','item_cashtags', 'item_tag_trending_score','item_exchanges','item_sectors', 'item_industries']].drop_duplicates()
+        df_item_features = data[['item_titles','item_cashtags', 'item_tag_trending_score','item_tag_watchlist_count','item_exchanges','item_sectors', 'item_industries']].drop_duplicates()
         df_user_features = data[['user_id', 'user_location']].drop_duplicates()
 
         dataset = self.build_id_mappings(df_interactions, df_user_features, df_item_features)
@@ -400,7 +400,7 @@ class HybridBaselineCashtagRecommender:
 
         train, test = self.cross_validate_interactions(interactions)
         cf_model = self.cf_model_pure(train, params)
-        self.evaluate_model(model=cf_model, model_name='cf', eval_metrics=['auc'], sets=(train, test), NUM_THREADS=NUM_THREADS)
+        self.evaluate_model(model=cf_model, model_name='cf', eval_metrics=['auc', 'precrec', 'mrr'], sets=(train, test), NUM_THREADS=NUM_THREADS, k=10)
 
         hybrid_model = self.hybrid_model(params, train, user_features, item_features)
         self.evaluate_model(model=hybrid_model, model_name='h', eval_metrics=['auc', 'precrec', 'mrr'], sets=(train, test), NUM_THREADS=NUM_THREADS, user_features=user_features, item_features=item_features, k=10)
