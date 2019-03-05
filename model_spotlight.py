@@ -2,6 +2,8 @@ from datetime import datetime
 import logging, sys
 import pandas as pd
 from spotlight.interactions import Interactions
+from spotlight.factorization.implicit import ImplicitFactorizationModel
+import numpy as np
 
 class SpotlightImplicitModel:
     def __init__(self):
@@ -35,15 +37,17 @@ class SpotlightImplicitModel:
         df = pd.read_csv(self.rpath, sep='\t')
         return df
 
-    def build_interactions(self, df_interactions: pd.DataFrame) -> Interactions: return Interactions(df_interactions['user_id'], df_interactions['item_cashtags'])
-
     def run(self):
         self.logger()
         df = self.csv_to_df()
-        df_interactions = df[['user_id', 'item_cashtags']]
-        df_interactions = df_interactions.groupby(['user_id','item_cashtags']).size().reset_index() \
+        df_interactions = df[['user_id', 'item_tag_ids']]
+        df_interactions = df_interactions.groupby(['user_id','item_tag_ids']).size().reset_index() \
                                                .rename(columns={0:'interactions'})
-        interactions = self.build_interactions(df_interactions)
+        user_ids, cashtag_ids = df_interactions['user_id'].values.astype(int), df_interactions['item_tag_ids'].values.astype(int)
+        implicit_interactions = Interactions(user_ids, cashtag_ids)
+        implicit_model = ImplicitFactorizationModel()
+        implicit_model.fit(implicit_interactions)
+        implicit_model.predict(user_ids, item_ids=None)
 
 if __name__ == "__main__":
     sim = SpotlightImplicitModel()
