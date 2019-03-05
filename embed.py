@@ -47,7 +47,7 @@ class EmbeddingTrainer:
         logger = logging.getLogger()
         data = pd.read_csv(self.rpath, delimiter='\t')
         logger.info("Read file with {0} entries".format(len(data.index)))
-        return data[['item_id', 'item_body', 'item_sectors', 'item_industries']]
+        return data[['item_id', 'item_body', 'item_timestamp','item_sectors', 'item_industries']]
 
     def write_trainable_input_file(self):
         logger, utils = logging.getLogger(), Utils()
@@ -55,14 +55,14 @@ class EmbeddingTrainer:
         logging.info("Began writing trainables file ({0})".format(write_path))
         with open(write_path, 'w') as f:
             for _, row in self.data.iterrows():
-                item_id = row['item_id']
+                item_id, item_timestamp = row['item_id'], row['item_timestamp']
                 tokens = utils.tokenise(row['item_body'])
-                item_sectors = list(map('SECTOR:{0}'.format, row['item_sectors'].split('|') if '|' in row['item_sectors'] else [row['item_sectors']]))
-                item_industries =  list(map('INDUSTRY:{0}'.format, row['item_industries'].split('|') if '|' in row['item_industries'] else [row['item_industries']]))
+                # item_sectors = list(map('SECTOR:{0}'.format, row['item_sectors'].split('|') if '|' in row['item_sectors'] else [row['item_sectors']]))
+                # item_industries =  list(map('INDUSTRY:{0}'.format, row['item_industries'].split('|') if '|' in row['item_industries'] else [row['item_industries']]))
 
                 words = ",".join([str(x) for x in tokens])
-                tags = ",".join([str(x) for x in [item_id]+item_sectors+item_industries])
-                line = words+"\t"+tags
+                #tags = ",".join([str(x) for x in [item_id]+[item_timestamp]+item_sectors+item_industries])
+                line = words+"\t"+str(item_id)
                 f.write(line+"\n")
         logging.info("Finished writing trainables file ({0})".format(write_path))
                 
@@ -91,7 +91,8 @@ class EmbeddingTrainer:
     
     def run(self):
         self.logger()
-        tagged_docs = TaggedDocumentIterator('./data/trainable/2019-03-04 20:14:37.txt')
+        #self.write_trainable_input_file()
+        tagged_docs = TaggedDocumentIterator('./data/trainable/2019-03-04 21:26:16.txt')
         self.train_model(tagged_docs)
 
 

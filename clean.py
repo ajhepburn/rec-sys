@@ -5,7 +5,7 @@ import spacy, logging, multiprocessing, sys, arrow, pycountry
 from utils.placenames import us_states, ca_prov, countries
 from utils.misc import Utils
 from more_itertools import unique_everseen
-from embed import EmbeddingParser
+from embed import EmbeddingTrainer
 
 class AttributeCleaner:
     def __init__(self, tweet_frequency=160):
