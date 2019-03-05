@@ -40,20 +40,34 @@ class AttributeParser:
 
         d = json.loads(l)['data']
         symbols = d.get('symbols', False)
-        titles, cashtags, trending_scores, watchlist_counts, exchanges, industries, sectors = [], [], [], [], [], [], []
+        titles, tag_ids, cashtags, trending_scores, watchlist_counts, exchanges, industries, sectors = [], [], [], [], [], [], [], []
 
         if symbols:                     # Checks to see if cashtags exist in tweet
             for s in symbols:
-                check = (s_title, s_symbol, s_trending_score, s_watchlist_count, s_exchange, s_industry, s_sector) = s.get('title'), s.get('symbol'), s.get('trending_score'), s.get('watchlist_count'), s.get('exchange'), s.get('industry'), s.get('sector')  # Check to see if a cashtag contains an 'Industry' tag, otherwise skip
+                check = (s_title, s_id, s_symbol, s_trending_score, s_watchlist_count, s_exchange, s_industry, s_sector) = s.get('title'), s.get('id'), s.get('symbol'), s.get('trending_score'), s.get('watchlist_count'), s.get('exchange'), s.get('industry'), s.get('sector')  # Check to see if a cashtag contains an 'Industry' tag, otherwise skip
                 if not all(check):
                     continue
 
                 user_id, user_location = d.get('user').get('id'), d.get('user').get('location')
                 item_id, item_timestamp, item_body = d.get('id'), d.get('created_at'), d.get('body').replace('\t',' ').replace('\n','')
 
-                titles[len(titles):], cashtags[len(cashtags):], trending_scores[len(trending_scores):], watchlist_counts[len(watchlist_counts):], exchanges[len(exchanges):], industries[len(industries):], sectors[len(sectors):] = tuple(zip((s_title, s_symbol, s_trending_score, s_watchlist_count, s_exchange, s_industry, s_sector)))
-
-        return (user_id, user_location, item_id, item_timestamp, item_body, titles, cashtags, trending_scores, watchlist_counts, exchanges, industries, sectors) if industries else ((None),)*12
+                titles[len(titles):], tag_ids[len(tag_ids):], cashtags[len(cashtags):], trending_scores[len(trending_scores):], watchlist_counts[len(watchlist_counts):], exchanges[len(exchanges):], industries[len(industries):], sectors[len(sectors):] = tuple(zip((s_title, s_id, s_symbol, s_trending_score, s_watchlist_count, s_exchange, s_industry, s_sector)))
+                d = {
+                    'user_id': user_id,
+                    'user_location': user_location,
+                    'item_id': item_id,
+                    'item_timestamp': item_timestamp,
+                    'item_body': item_body,
+                    'item_titles': '|'.join(map(str, titles)),
+                    'item_tag_ids': '|'.join(map(str, tag_ids)),
+                    'item_cashtags': '|'.join(map(str, cashtags)),
+                    'item_tag_trending_score': '|'.join(map(str, trending_scores)),
+                    'item_tag_watchlist_count': '|'.join(map(str, watchlist_counts)),
+                    'item_exchanges': '|'.join(map(str, exchanges)), 
+                    'item_industries': '|'.join(map(str, industries)), 
+                    'item_sectors': '|'.join(map(str, sectors))
+                }    
+                return d if all(check) else None
                  
     def file_writer(self) -> int:
         """ Responsible for writing to ct_industry.csv in ./data/csv/ and logging each file read.
@@ -67,21 +81,19 @@ class AttributeParser:
         """
 
         logger = logging.getLogger()
-
         with open (os.path.join(self.wpath, 'metadata.csv'), 'w', newline='') as stocktwits_csv:
-            fields = ['user_id', 'item_id', 'user_location', 'item_timestamp', 'item_body','item_titles','item_cashtags','item_tag_trending_score','item_tag_watchlist_count','item_exchanges','item_industries','item_sectors']
+            fields = ['user_id', 'item_id', 'user_location', 'item_timestamp', 'item_body','item_titles','item_tag_ids','item_cashtags','item_tag_trending_score','item_tag_watchlist_count','item_exchanges','item_industries','item_sectors']
             writer = csv.DictWriter(stocktwits_csv, fieldnames=fields, delimiter='\t')
             writer.writeheader()
             line_count = 0
-
             for fp in self.files:
                 logger.info('Reading file {0}'.format(fp))
                 with open(os.path.join(self.rpath, fp)) as f:
                     for l in f:
-                        if not all(self.parse(l)):
+                        parsed_data = self.parse(l)
+                        if not parsed_data:
                             continue
-                        user_id, user_location, item_id, item_timestamp, item_body, titles, cashtags, trend_scores, watch_counts, exchanges, industries, sectors = self.parse(l)
-                        writer.writerow({'user_id':user_id, 'item_id':item_id, 'user_location':user_location, 'item_body':item_body,'item_timestamp':item_timestamp, 'item_titles':'|'.join(map(str, titles)),'item_cashtags':'|'.join(map(str, cashtags)),'item_tag_trending_score':'|'.join(map(str, trend_scores)), 'item_tag_watchlist_count':'|'.join(map(str, watch_counts)), 'item_exchanges':'|'.join(map(str, exchanges)),'item_industries':'|'.join(map(str, industries)),'item_sectors':'|'.join(map(str, sectors))})
+                        writer.writerow(parsed_data)
                         line_count+=1
         
         return line_count
@@ -144,7 +156,7 @@ class CashtagParser:
         df0.to_csv(self.wpath, sep='\t')
 
 if __name__ == "__main__":
-    # ab = AttributeParser('2017_04_01') # 2017_02_01
-    # ab.run()
-    ctp = CashtagParser()
-    ctp.conversion_to_cashtag_orientation()
+    ab = AttributeParser('2017_04_01') # 2017_02_01
+    ab.run()
+    # ctp = CashtagParser()
+    # ctp.conversion_to_cashtag_orientation()
