@@ -3,6 +3,8 @@ import logging, sys
 import pandas as pd
 from spotlight.interactions import Interactions
 from spotlight.factorization.implicit import ImplicitFactorizationModel
+from spotlight.cross_validation import random_train_test_split
+from spotlight.evaluation import precision_recall_score, mrr_score
 import numpy as np
 
 class SpotlightImplicitModel:
@@ -45,9 +47,20 @@ class SpotlightImplicitModel:
                                                .rename(columns={0:'interactions'})
         user_ids, cashtag_ids = df_interactions['user_id'].values.astype(int), df_interactions['item_tag_ids'].values.astype(int)
         implicit_interactions = Interactions(user_ids, cashtag_ids)
-        implicit_model = ImplicitFactorizationModel()
-        implicit_model.fit(implicit_interactions)
-        implicit_model.predict(user_ids, item_ids=None)
+        train, test = random_train_test_split(implicit_interactions)
+        implicit_model = ImplicitFactorizationModel(use_cuda=True)
+        implicit_model.fit(train, verbose=True)
+        # predictions = implicit_model.predict(406225, item_ids=None)
+        # # print(predictions)
+        train_mrr = mrr_score(implicit_model, train).mean()
+        test_mrr = mrr_score(implicit_model, test).mean()
+
+        train_prec, train_rec = precision_recall_score(implicit_model, train)
+        test_prec, test_rec = precision_recall_score(implicit_model, test)
+
+        print('Train MRR {:.8f}, test MRR {:.8f}'.format(train_mrr, test_mrr))
+        print('Train Precision@10 {:.8f}, test Precision@10 {:.8f}'.format(train_prec.mean(), test_prec.mean()))
+        print('Train Recall@10 {:.8f}, test Recall@10 {:.8f}'.format(train_rec.mean(), test_rec.mean()))
 
 if __name__ == "__main__":
     sim = SpotlightImplicitModel()
