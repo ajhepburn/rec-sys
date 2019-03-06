@@ -1,8 +1,11 @@
+import torch
+
 from datetime import datetime
 import logging, sys
 import pandas as pd
-from spotlight.interactions import Interactions
+from spotlight.interactions import Interactions, SequenceInteractions
 from spotlight.factorization.implicit import ImplicitFactorizationModel
+from spotlight.sequence.implicit import ImplicitSequenceModel
 from spotlight.cross_validation import random_train_test_split
 from spotlight.evaluation import precision_recall_score, mrr_score
 from statistics import median
@@ -58,19 +61,16 @@ class SpotlightImplicitModel:
         df_interactions, df_timestamps = df[['user_id', 'item_tag_ids']], df['item_timestamp']
         return (df_interactions, df_timestamps, df_weights)
 
-    def build_interactions_object(self, df_interactions: pd.DataFrame, df_timestamps: pd.DataFrame, df_weights: pd.DataFrame) -> Interactions:
-        def normalize(d):
-            # d is a (n x dimension) np array
-            d -= np.min(d, axis=0)
-            d /= np.ptp(d, axis=0)
-            return d
+    def build_interactions_object(self, df_interactions: pd.DataFrame, df_timestamps: pd.DataFrame, df_weights: pd.DataFrame, seq: bool):
         logger = logging.getLogger()
         user_ids, cashtag_ids, timestamps, weights = df_interactions['user_id'].values.astype(int), df_interactions['item_tag_ids'].values.astype(int), df_timestamps.values, np.array(df_weights['count'].values)
-        normalised_v = lambda v: v / np.sqrt(np.sum(v**2))
-        normalised_weights = normalised_v(weights)
-        implicit_interactions = Interactions(user_ids=user_ids, item_ids=cashtag_ids, timestamps=np.array([int(x[0]) for x in timestamps]), weights=normalised_weights)
-        logger.info("Build interactions object: {}".format(implicit_interactions))
-        return implicit_interactions
+        normalise = lambda v: v / np.sqrt(np.sum(v**2))
+        normalised_weights = normalise(weights)
+        interactions = Interactions(user_ids=user_ids, item_ids=cashtag_ids, timestamps=np.array([int(x[0]) for x in timestamps]), weights=normalised_weights)
+        if seq:
+            interactions.to_sequence()
+        logger.info("Build interactions object: {}".format(interactions))
+        return interactions
 
     def cross_validation(self, interactions: Interactions) -> tuple:
         logger = logging.getLogger()
@@ -84,6 +84,10 @@ class SpotlightImplicitModel:
         implicit_model = ImplicitFactorizationModel(use_cuda=True)
         implicit_model.fit(train, verbose=True)
         return implicit_model
+
+    def fit_sequence_model(self, train: SequenceInteractions) -> ImplicitSequenceModel:
+        model = ImplicitSequenceModel()
+        return model
 
     def evaluation(self, model, sets: tuple):
         logger = logging.getLogger()
@@ -101,18 +105,28 @@ class SpotlightImplicitModel:
         logger.info('Train Precision@10 {:.8f}, test Precision@10 {:.8f}'.format(train_prec.mean(), test_prec.mean()))
         logger.info('Train Recall@10 {:.8f}, test Recall@10 {:.8f}'.format(train_rec.mean(), test_rec.mean()))
 
-    def run(self):
+    def run(self, seq):
         self.logger()
         df_interactions, df_timestamps, df_weights = self.csv_to_df()
 
-        implicit_interactions = self.build_interactions_object(df_interactions, df_timestamps, df_weights)
-        train, test = self.cross_validation(implicit_interactions)
+        interactions = self.build_interactions_object(df_interactions, df_timestamps, df_weights, seq)
+        train, test = self.cross_validation(interactions)
         
         implicit_model = self.fit_implicit_model(train)
+        
+        # SEQ_PARAMS = {
+        #     'loss': ,
+        #     'representation' ,
+        #     'batch_size': ,
+        #     'learning_rate': ,
+        #     'l2': ,
+        #     'n_iter': ,
+        #     'random_state': ,
+        # }
  
         self.evaluation(implicit_model, (train, test))
 
         
 if __name__ == "__main__":
     sim = SpotlightImplicitModel()
-    sim.run()
+    sim.run(seq=True)
