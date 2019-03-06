@@ -5,6 +5,7 @@ from spotlight.interactions import Interactions
 from spotlight.factorization.implicit import ImplicitFactorizationModel
 from spotlight.cross_validation import random_train_test_split
 from spotlight.evaluation import precision_recall_score, mrr_score
+from statistics import median
 import numpy as np
 import itertools
 
@@ -40,22 +41,34 @@ class SpotlightImplicitModel:
         df = pd.read_csv(self.rpath, sep='\t')
         # First we create count column with transform
         df['count'] = df.groupby(['user_id', 'item_tag_ids']).user_id.transform('size')
+        occurrences = df['count'].tolist()
+        occ_cutoff = 2 * median(occurrences)
+        
+        df_weights = df[['user_id', 'item_tag_ids', 'count']].drop_duplicates(subset=['user_id', 'item_tag_ids'])
+        df_weights = df_weights[df_weights['count'] < occ_cutoff]
 
         # AFter that we merge our groupby with apply list back to our original dataframe
         df = df.merge(df.groupby(['user_id', 'item_tag_ids']).item_timestamp.agg(list).reset_index(), 
                     on=['user_id', 'item_tag_ids'], 
                     how='left',
                         suffixes=['_1', '']).drop('item_timestamp_1', axis=1)
-
         df = df.groupby(['user_id', 'item_tag_ids']).item_timestamp.agg(list).reset_index()
         listjoin =  lambda x: [j for i in x for j in i]
         df['item_timestamp'] = df['item_timestamp'].apply(listjoin)
-        return df
+        df_interactions, df_timestamps = df[['user_id', 'item_tag_ids']], df['item_timestamp']
+        return (df_interactions, df_timestamps, df_weights)
 
-    def build_interactions_object(self, df: pd.DataFrame) -> Interactions:
+    def build_interactions_object(self, df_interactions: pd.DataFrame, df_timestamps: pd.DataFrame, df_weights: pd.DataFrame) -> Interactions:
+        def normalize(d):
+            # d is a (n x dimension) np array
+            d -= np.min(d, axis=0)
+            d /= np.ptp(d, axis=0)
+            return d
         logger = logging.getLogger()
-        user_ids, cashtag_ids, timestamps = df['user_id'].values.astype(int), df['item_tag_ids'].values.astype(int), df['item_timestamp'].values
-        implicit_interactions = Interactions(user_ids=user_ids, item_ids=cashtag_ids, timestamps=np.array([int(x[0]) for x in timestamps]))
+        user_ids, cashtag_ids, timestamps, weights = df_interactions['user_id'].values.astype(int), df_interactions['item_tag_ids'].values.astype(int), df_timestamps.values, np.array(df_weights['count'].values)
+        normalised_v = lambda v: v / np.sqrt(np.sum(v**2))
+        normalised_weights = normalised_v(weights)
+        implicit_interactions = Interactions(user_ids=user_ids, item_ids=cashtag_ids, timestamps=np.array([int(x[0]) for x in timestamps]), weights=normalised_weights)
         logger.info("Build interactions object: {}".format(implicit_interactions))
         return implicit_interactions
 
@@ -90,9 +103,9 @@ class SpotlightImplicitModel:
 
     def run(self):
         self.logger()
-        df = self.csv_to_df()
+        df_interactions, df_timestamps, df_weights = self.csv_to_df()
 
-        implicit_interactions = self.build_interactions_object(df)
+        implicit_interactions = self.build_interactions_object(df_interactions, df_timestamps, df_weights)
         train, test = self.cross_validation(implicit_interactions)
         
         implicit_model = self.fit_implicit_model(train)
