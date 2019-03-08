@@ -1,5 +1,6 @@
 import logging
 import sys
+import json
 
 from datetime import datetime
 
@@ -15,17 +16,11 @@ from spotlight.evaluation import precision_recall_score, mrr_score
 
 NUM_SAMPLES = 100
 
-LEARNING_RATES = [1e-3, 1e-2, 5 * 1e-2, 1e-1]
-LOSSES = ['bpr', 'hinge', 'adaptive_hinge', 'pointwise']
-BATCH_SIZE = [8, 16, 32, 256]
-EMBEDDING_DIM = [8, 16, 32, 64, 128, 256]
-N_ITER = list(range(5, 20))
-L2 = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.0]
-
 class SpotlightImplicitModel:
     def __init__(self):
         self.logpath = './log/models/spotlightimplicitmodel/'
         self.rpath = './data/csv/cashtags_clean.csv'
+        self.combinations = []
 
     def logger(self):
         """Sets logger config to both std.out and to log ./log/io/csv/cleaner
@@ -99,20 +94,48 @@ class SpotlightImplicitModel:
         logger.info('Split into \n {} and \n {}.'.format(train, test))
         return (train, test)
 
-    def sample_implicit_hyperparameters(self):
-        pass
+    def sample_implicit_hyperparameters(self, random_state, num):
+        space = {
+            'learning_rate': [1e-3, 1e-2, 5 * 1e-2, 1e-1],
+            'loss': ['bpr', 'hinge', 'adaptive_hinge', 'pointwise'],
+            'batch_size': [8, 16, 32, 256],
+            'embedding_dim': [8, 16, 32, 64, 128, 256],
+            'n_iter': list(range(5, 20)),
+            'l2': [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.0]
+        }
 
-    def fit_implicit_model(self, train: Interactions) -> ImplicitFactorizationModel:
+        sampler = ParameterSampler(
+            space,
+            n_iter=num,
+            random_state=random_state
+        )
+
+        for params in sampler:
+            yield params
+        
+
+    def fit_implicit_model(self, hyperparameters: dict, train: Interactions, random_state: np.random.RandomState) -> ImplicitFactorizationModel:
         logger = logging.getLogger()
-        logger.info("Begin fitting implicit model...\n Hyperparameters: {0}".format('FILLER TEXT'))
-        implicit_model = ImplicitFactorizationModel(params)
+        logger.info("Beginning fitting implicit model... \n Hyperparameters: \n {0}".format(
+            json.dumps({i:hyperparameters[i] for i in hyperparameters if i!='use_cuda'})
+        ))
+        
+        implicit_model = ImplicitFactorizationModel(
+            loss=hyperparameters['loss'],
+            learning_rate=hyperparameters['learning_rate'],
+            batch_size=hyperparameters['batch_size'],
+            embedding_dim=hyperparameters['embedding_dim'],
+            n_iter=hyperparameters['n_iter'],
+            l2=hyperparameters['l2'],
+            use_cuda=True,
+        )
         implicit_model.fit(train, verbose=True)
+        self.combinations.append(hyperparameters)
         return implicit_model
 
     def evaluation(self, model, sets: tuple):
         logger = logging.getLogger()
         train, test = sets
-        random_state = np.random.RandomState(100)
 
         logger.info("Beginning model evaluation...")
 
@@ -136,14 +159,19 @@ class SpotlightImplicitModel:
 
     def run(self):
         self.logger()
+        random_state = np.random.RandomState(100)
+
         df_interactions, df_timestamps, df_weights = self.csv_to_df(months=3)
 
         interactions = self.build_interactions_object(df_interactions, df_timestamps, df_weights)
         train, test = self.cross_validation(interactions)
 
-        implicit_model = self.fit_implicit_model(train)
+        for hyperparameters in self.sample_implicit_hyperparameters(random_state, NUM_SAMPLES):
+            if hyperparameters in self.combinations:
+                continue
 
-        self.evaluation(implicit_model, (train, test))
+            implicit_model = self.fit_implicit_model(hyperparameters, train, random_state)
+            self.evaluation(implicit_model, (train, test))
 
 if __name__ == "__main__":
     sim = SpotlightImplicitModel()
