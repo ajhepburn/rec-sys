@@ -22,8 +22,10 @@ from sklearn.model_selection import ParameterSampler
 
 from spotlight.interactions import Interactions
 from spotlight.factorization.implicit import ImplicitFactorizationModel
+from spotlight.sequence.implicit import ImplicitSequenceModel
+from spotlight.sequence.representations import CNNNet
 from spotlight.cross_validation import random_train_test_split
-from spotlight.evaluation import precision_recall_score, mrr_score
+from spotlight.evaluation import precision_recall_score, mrr_score, sequence_precision_recall_score, sequence_mrr_score
 
 NUM_SAMPLES = 100
 DEFAULT_PARAMS = {
@@ -34,6 +36,13 @@ DEFAULT_PARAMS = {
     'n_iter': 10,
     'l2': 0.0
 }
+
+LEARNING_RATES = [1e-3, 1e-2, 5 * 1e-2, 1e-1]
+LOSSES = ['bpr', 'hinge', 'adaptive_hinge', 'pointwise']
+BATCH_SIZE = [8, 16, 32, 256]
+EMBEDDING_DIM = [8, 16, 32, 64, 128, 256]
+N_ITER = list(range(5, 20))
+L2 = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.0]
 
 class Results:
     """ Responsible for appending model evaluation/hyperparameter information.
@@ -134,9 +143,10 @@ class SpotlightModel:
 
     """
 
-    def __init__(self):
+    def __init__(self, models: tuple):
         self._logpath = './log/models/spotlightimplicitmodel/'
         self._rpath = './data/csv/cashtags_clean.csv'
+        self._models = 'S_POOL'
 
     def logger(self):
         """Sets logger config to both std.out and log ./log/io/csv/spotlightimplicitmodel/
@@ -242,12 +252,22 @@ class SpotlightModel:
 
         """
 
+        def interactions_to_sequence(train: Interactions, test: Interactions):
+            train, test = train.to_sequence(), test.to_sequence()
+            return train, test
+
         logger = logging.getLogger()
         train, test = random_train_test_split(interactions)
+        train_ids, test_ids = train.item_ids, test.item_ids
+        if self._models in ('S_POOL','S_CNN', 'S_LSTM'):
+            train, test = interactions_to_sequence(train, test)
+
         logger.info('Split into \n {} and \n {}.'.format(train, test))
         return (
             train,
-            test
+            test,
+            train_ids,
+            test_ids
         )
 
     def sample_implicit_hyperparameters(self, random_state: np.random.RandomState, num: int) -> dict:
@@ -264,15 +284,48 @@ class SpotlightModel:
             dict: Returns dict of sampled hyperparameters.
 
         """
+        def parameters_implicit_factorization():
+            return {
+                'learning_rate': LEARNING_RATES,
+                'loss': LOSSES,
+                'batch_size': BATCH_SIZE,
+                'embedding_dim': EMBEDDING_DIM,
+                'n_iter': N_ITER,
+                'l2': L2
+            }
 
-        space = {
-            'learning_rate': [1e-3, 1e-2, 5 * 1e-2, 1e-1],
-            'loss': ['bpr', 'hinge', 'adaptive_hinge', 'pointwise'],
-            'batch_size': [8, 16, 32, 256],
-            'embedding_dim': [8, 16, 32, 64, 128, 256],
-            'n_iter': list(range(5, 20)),
-            'l2': [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.0]
+        def parameters_sequence_cnn():
+            return {
+                'n_iter': N_ITER,
+                'batch_size': BATCH_SIZE,
+                'l2': L2,
+                'learning_rate': LEARNING_RATES,
+                'loss': LOSSES,
+                'embedding_dim': EMBEDDING_DIM,
+                'kernel_width': [3, 5, 7],
+                'num_layers': list(range(1, 10)),
+                'dilation_multiplier': [1, 2],
+                'nonlinearity': ['tanh', 'relu'],
+                'residual': [True, False],
+            }
+
+        def parameters_sequence_lstm():
+            return {
+                'n_iter': N_ITER,
+                'batch_size': BATCH_SIZE,
+                'l2': L2,
+                'learning_rate': LEARNING_RATES,
+                'loss': LOSSES,
+                'embedding_dim': EMBEDDING_DIM,
+            }
+
+        aliases = {
+            'MF': 'implicit_factorization',
+            'S_CNN': 'implicit_sequence_cnn',
+            'S_LSTM': 'implicit_sequence_lstm',
         }
+
+        space = locals()['parameters_'+aliases.get(self._models)]()
 
         sampler = ParameterSampler(
             space,
@@ -283,7 +336,7 @@ class SpotlightModel:
         for params in sampler:
             yield params
 
-    def fit_implicit_model(self, train: Interactions, random_state: np.random.RandomState, hyperparameters: dict = None) -> ImplicitFactorizationModel:
+    def model_implicit_factorization (self, train: Interactions, random_state: np.random.RandomState, hyperparameters: dict = None) -> ImplicitFactorizationModel:
         """Trains a Spotlight implicit matrix factorization model.
 
         Args:
@@ -303,7 +356,7 @@ class SpotlightModel:
             logger.info("Beginning fitting implicit model... \n Hyperparameters: \n {0}".format(
                 json.dumps({i:hyperparameters[i] for i in hyperparameters if i != 'use_cuda'})
             ))
-            implicit_model = ImplicitFactorizationModel(
+            model = ImplicitFactorizationModel(
                 loss=hyperparameters['loss'],
                 learning_rate=hyperparameters['learning_rate'],
                 batch_size=hyperparameters['batch_size'],
@@ -315,11 +368,49 @@ class SpotlightModel:
             )
         else:
             logger.info("Beginning fitting implicit model with default hyperparameters...")
-            implicit_model = ImplicitFactorizationModel(use_cuda=True)
-        implicit_model.fit(train, verbose=True)
-        return implicit_model
+            model = ImplicitFactorizationModel(use_cuda=True)
+        model.fit(train, verbose=True)
+        return model
 
-    def evaluation(self, model, sets: tuple):
+    def model_implicit_sequence (self, train: Interactions, random_state: np.random.RandomState, representation: str = None, hyperparameters: dict = None) -> ImplicitSequenceModel:
+        logger = logging.getLogger()
+        if not representation:
+            if hyperparameters:
+                net = CNNNet(train.num_items,
+                        embedding_dim=hyperparameters['embedding_dim'],
+                        kernel_width=hyperparameters['kernel_width'],
+                        dilation=hyperparameters['dilation'],
+                        num_layers=hyperparameters['num_layers'],
+                        nonlinearity=hyperparameters['nonlinearity'],
+                        residual_connections=hyperparameters['residual'])
+            else:
+                net = CNNNet(train.num_items)
+
+            representation = net
+        
+        out_string = 'CNN' if not representation else representation.upper()
+        if hyperparameters:
+            logger.info("Beginning fitting implicit sequence {0} model... \n Hyperparameters: \n {1}".format(
+                out_string,
+                json.dumps({i:hyperparameters[i] for i in hyperparameters if i != 'use_cuda'})
+            ))
+            model = ImplicitSequenceModel(loss=hyperparameters['loss'],
+                                    representation=representation,
+                                    batch_size=hyperparameters['batch_size'],
+                                    learning_rate=hyperparameters['learning_rate'],
+                                    l2=hyperparameters['l2'],
+                                    n_iter=hyperparameters['n_iter'],
+                                    use_cuda=True,
+                                    random_state=random_state)
+        else:
+            model = ImplicitSequenceModel(use_cuda=True)
+            logger.info("Beginning fitting implicit sequence {} model with default hyperparameters...".format(out_string))
+
+        model.fit(train, verbose=True)
+        model.predict(train.sequences)
+        return model
+
+    def evaluation(self, model, interactions: tuple, ids: tuple = None):
         """Evaluates models on a number of metrics
 
         Takes model and evaluates it by Precision@K/Recall@K, Mean Reciprocal Rank metrics.
@@ -334,19 +425,28 @@ class SpotlightModel:
         """
 
         logger = logging.getLogger()
-        train, test = sets
+        train, test = interactions
+        train_ids, test_ids = ids
 
         logger.info("Beginning model evaluation...")
 
-        train_mrr = mrr_score(model, train).mean()
-        test_mrr = mrr_score(model, test).mean()
+        if self._models in ('S_POOL', 'S_CNN', 'S_LSTM'):
+            train_mrr = sequence_mrr_score(model, train).mean()
+            test_mrr = sequence_mrr_score(model, test).mean()
+        else:
+            train_mrr = mrr_score(model, train).mean()
+            test_mrr = mrr_score(model, test).mean()
         logger.info('Train MRR {:.8f}, test MRR {:.8f}'.format(
             train_mrr, test_mrr
         ))
 
-
-        train_prec, train_rec = precision_recall_score(model, train)
-        test_prec, test_rec = precision_recall_score(model, test)
+        if self._models in ('S_POOL', 'S_CNN', 'S_LSTM'):
+            print(type(train_ids), type(test_ids))
+            train_prec, train_rec = sequence_precision_recall_score(model, train)
+            test_prec, test_rec = sequence_precision_recall_score(model, test)
+        else:
+            train_prec, train_rec = precision_recall_score(model, train)
+            test_prec, test_rec = precision_recall_score(model, test)
         logger.info('Train Precision@10 {:.8f}, test Precision@10 {:.8f}'.format(
             train_prec.mean(),
             test_prec.mean()
@@ -368,7 +468,7 @@ class SpotlightModel:
             },
         }
 
-    def run(self, results_file: str = None, default: str = False):
+    def run(self, results_file: str = None, defaults: str = False):
         """Main function of class which calls on other methods to run model.
 
         Args:
@@ -383,6 +483,10 @@ class SpotlightModel:
         logger = logging.getLogger()
         random_state = np.random.RandomState(100)
         init_time = str(datetime.now())[:-7]
+        aliases = {
+            'S_POOL': 'pooling',
+            'S_LSTM': 'lstm',
+        }
 
         if not results_file:
             results = Results('{}_results.txt'.format(init_time))
@@ -393,28 +497,46 @@ class SpotlightModel:
         df_interactions, df_timestamps, df_weights = self.csv_to_df(months=3)
 
         interactions = self.build_interactions_object(df_interactions, df_timestamps, df_weights)
-        train, test = self.cross_validation(interactions)
+        train, test, train_ids, item_ids = self.cross_validation(interactions)
 
-        if not default:
+        if not defaults:
             for hyperparameters in self.sample_implicit_hyperparameters(random_state, NUM_SAMPLES):
                 if hyperparameters in results:
                     continue
 
-                implicit_model = self.fit_implicit_model(
-                    hyperparameters=hyperparameters,
-                    train=train,
-                    random_state=random_state
-                )
-                evaluation = self.evaluation(implicit_model, (train, test))
+                if self._models in ('S_POOL', 'S_CNN', 'S_LSTM'):
+                    model = self.model_implicit_sequence(
+                        hyperparameters=hyperparameters,
+                        train=train,
+                        random_state=random_state,
+                        representation=aliases.get(self._models, None)
+                    )
+                else:
+                    model = self.model_implicit_factorization(
+                        hyperparameters=hyperparameters,
+                        train=train,
+                        random_state=random_state,
+                    )
+                evaluation = self.evaluation(model, (train, test), (train_ids, item_ids))
                 results.save(evaluation, hyperparameters)
         else:
-            implicit_model = self.fit_implicit_model(train=train, random_state=random_state)
-            evaluation = self.evaluation(implicit_model, (train, test))
+            if self._models in ('S_POOL','S_CNN', 'S_LSTM'):
+                model = self.model_implicit_sequence(
+                    train=train,
+                    random_state=random_state,
+                    representation=aliases.get(self._models, None)
+                )
+            else:
+                model = self.model_implicit_factorization(
+                    train=train,
+                    random_state=random_state,
+                )
+            evaluation = self.evaluation(model, (train, test), (train_ids, item_ids))
             results.save(DEFAULT_PARAMS, evaluation)
 
         if best_result is not None:
             logger.info('Best result: {}'.format(results.best()))
 
 if __name__ == "__main__":
-    sim = SpotlightModel()
-    sim.run(default=True)
+    sim = SpotlightModel(models='S_CNN')
+    sim.run(defaults=True)
