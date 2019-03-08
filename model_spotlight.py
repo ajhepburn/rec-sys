@@ -5,12 +5,11 @@ import logging, sys
 import pandas as pd
 from spotlight.interactions import Interactions, SequenceInteractions
 from spotlight.factorization.implicit import ImplicitFactorizationModel
-from spotlight.sequence.implicit import ImplicitSequenceModel
 from spotlight.cross_validation import random_train_test_split
 from spotlight.evaluation import precision_recall_score, mrr_score
 from statistics import median
 import numpy as np
-import itertools
+import itertools, json
 
 class SpotlightImplicitModel:
     def __init__(self):
@@ -32,7 +31,7 @@ class SpotlightImplicitModel:
                     logging.StreamHandler(sys.stdout)
                 ])
 
-    def csv_to_df(self) -> tuple:
+    def csv_to_df(self, months: int) -> tuple:
         """Reads in CSV file declared in __init__ (self.rpath) and converts it to a number of Pandas DataFrames.
             
         Returns:
@@ -44,11 +43,8 @@ class SpotlightImplicitModel:
         df = pd.read_csv(self.rpath, sep='\t')
         # First we create count column with transform
         df['count'] = df.groupby(['user_id', 'item_tag_ids']).user_id.transform('size')
-        occurrences = df['count'].tolist()
-        occ_cutoff = 2 * median(occurrences)
-        
+        df = df[df['count'] < months*100]
         df_weights = df[['user_id', 'item_tag_ids', 'count']].drop_duplicates(subset=['user_id', 'item_tag_ids'])
-        df_weights = df_weights[df_weights['count'] < occ_cutoff]
 
         # AFter that we merge our groupby with apply list back to our original dataframe
         df = df.merge(df.groupby(['user_id', 'item_tag_ids']).item_timestamp.agg(list).reset_index(), 
@@ -66,7 +62,7 @@ class SpotlightImplicitModel:
         user_ids, cashtag_ids, timestamps, weights = df_interactions['user_id'].values.astype(int), df_interactions['item_tag_ids'].values.astype(int), df_timestamps.values, np.array(df_weights['count'].values)
         normalise = lambda v: v / np.sqrt(np.sum(v**2))
         normalised_weights = normalise(weights)
-        interactions = Interactions(user_ids=user_ids, item_ids=cashtag_ids, timestamps=np.array([int(x[0]) for x in timestamps]), weights=normalised_weights)
+        interactions = Interactions(user_ids=user_ids, item_ids=cashtag_ids, timestamps=np.array([int(x[len(x)-1]) for x in timestamps]), weights=normalised_weights)
         if seq:
             interactions.to_sequence()
         logger.info("Build interactions object: {}".format(interactions))
@@ -78,16 +74,12 @@ class SpotlightImplicitModel:
         logger.info('Split into \n {} and \n {}.'.format(train, test))
         return (train, test)
 
-    def fit_implicit_model(self, train: Interactions) -> ImplicitFactorizationModel:
+    def fit_implicit_model(self, params: dict, train: Interactions) -> ImplicitFactorizationModel:
         logger = logging.getLogger()
-        logger.info("Begin fitting implicit model...")
-        implicit_model = ImplicitFactorizationModel(use_cuda=True)
+        logger.info("Begin fitting implicit model...\n Hyperarameters: {0}".format(json.dumps(params)))
+        implicit_model = ImplicitFactorizationModel(params)
         implicit_model.fit(train, verbose=True)
         return implicit_model
-
-    def fit_sequence_model(self, train: SequenceInteractions) -> ImplicitSequenceModel:
-        model = ImplicitSequenceModel()
-        return model
 
     def evaluation(self, model, sets: tuple):
         logger = logging.getLogger()
@@ -105,28 +97,26 @@ class SpotlightImplicitModel:
         logger.info('Train Precision@10 {:.8f}, test Precision@10 {:.8f}'.format(train_prec.mean(), test_prec.mean()))
         logger.info('Train Recall@10 {:.8f}, test Recall@10 {:.8f}'.format(train_rec.mean(), test_rec.mean()))
 
-    def run(self, seq):
+    def run(self, params: dict, seq: bool):
         self.logger()
-        df_interactions, df_timestamps, df_weights = self.csv_to_df()
+        df_interactions, df_timestamps, df_weights = self.csv_to_df(months=3)
 
         interactions = self.build_interactions_object(df_interactions, df_timestamps, df_weights, seq)
         train, test = self.cross_validation(interactions)
         
-        implicit_model = self.fit_implicit_model(train)
-        
-        # SEQ_PARAMS = {
-        #     'loss': ,
-        #     'representation' ,
-        #     'batch_size': ,
-        #     'learning_rate': ,
-        #     'l2': ,
-        #     'n_iter': ,
-        #     'random_state': ,
-        # }
+        implicit_model = self.fit_implicit_model(params, train)
  
         self.evaluation(implicit_model, (train, test))
-
         
 if __name__ == "__main__":
     sim = SpotlightImplicitModel()
-    sim.run(seq=True)
+    params = {
+        'use_cuda':True,
+        'loss':'pointwise',
+        'embedding_dim':128,  
+        'n_iter':10,  
+        'batch_size':1024,  
+        'l2':1e-9,
+        'learning_rate':1e-3,
+    }
+    sim.run(params=params,seq=True)
