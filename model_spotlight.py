@@ -16,11 +16,17 @@ from spotlight.evaluation import precision_recall_score, mrr_score
 
 NUM_SAMPLES = 100
 
+class Results:
+    def __init__(self, filename):
+        self._respath = './log/models/spotlightimplicitmodel/results/'
+        self._filename = filename
+        open(self._respath+self._filename, 'a+')
+
 class SpotlightImplicitModel:
-    def __init__(self):
+    def __init__(self, default=False):
         self.logpath = './log/models/spotlightimplicitmodel/'
         self.rpath = './data/csv/cashtags_clean.csv'
-        self.combinations = []
+        self.default = default
 
     def logger(self):
         """Sets logger config to both std.out and to log ./log/io/csv/cleaner
@@ -94,7 +100,7 @@ class SpotlightImplicitModel:
         logger.info('Split into \n {} and \n {}.'.format(train, test))
         return (train, test)
 
-    def sample_implicit_hyperparameters(self, random_state, num):
+    def sample_implicit_hyperparameters(self, random_state: np.random.RandomState, num: int) -> dict:
         space = {
             'learning_rate': [1e-3, 1e-2, 5 * 1e-2, 1e-1],
             'loss': ['bpr', 'hinge', 'adaptive_hinge', 'pointwise'],
@@ -116,21 +122,24 @@ class SpotlightImplicitModel:
 
     def fit_implicit_model(self, hyperparameters: dict, train: Interactions, random_state: np.random.RandomState) -> ImplicitFactorizationModel:
         logger = logging.getLogger()
-        logger.info("Beginning fitting implicit model... \n Hyperparameters: \n {0}".format(
-            json.dumps({i:hyperparameters[i] for i in hyperparameters if i!='use_cuda'})
-        ))
-        
-        implicit_model = ImplicitFactorizationModel(
-            loss=hyperparameters['loss'],
-            learning_rate=hyperparameters['learning_rate'],
-            batch_size=hyperparameters['batch_size'],
-            embedding_dim=hyperparameters['embedding_dim'],
-            n_iter=hyperparameters['n_iter'],
-            l2=hyperparameters['l2'],
-            use_cuda=True,
-        )
+        if not self.default:
+            logger.info("Beginning fitting implicit model... \n Hyperparameters: \n {0}".format(
+                json.dumps({i:hyperparameters[i] for i in hyperparameters if i!='use_cuda'})
+            ))
+            implicit_model = ImplicitFactorizationModel(
+                loss=hyperparameters['loss'],
+                learning_rate=hyperparameters['learning_rate'],
+                batch_size=hyperparameters['batch_size'],
+                embedding_dim=hyperparameters['embedding_dim'],
+                n_iter=hyperparameters['n_iter'],
+                l2=hyperparameters['l2'],
+                use_cuda=True,
+                random_state=random_state
+            )
+        else:
+            logger.info("Beginning fitting implicit model with default hyperparameters...")
+            implicit_model = ImplicitFactorizationModel(use_cuda=True)
         implicit_model.fit(train, verbose=True)
-        self.combinations.append(hyperparameters)
         return implicit_model
 
     def evaluation(self, model, sets: tuple):
@@ -161,16 +170,24 @@ class SpotlightImplicitModel:
         self.logger()
         random_state = np.random.RandomState(100)
 
+        init_time = str(datetime.now())[:-7]
+        results = Results('{}_results.txt'.format(init_time))
+        best_result = results.best()
+
         df_interactions, df_timestamps, df_weights = self.csv_to_df(months=3)
 
         interactions = self.build_interactions_object(df_interactions, df_timestamps, df_weights)
         train, test = self.cross_validation(interactions)
+        
+        if not self.default:
+            for hyperparameters in self.sample_implicit_hyperparameters(random_state, NUM_SAMPLES):
+                if hyperparameters in self.combinations:
+                    continue
 
-        for hyperparameters in self.sample_implicit_hyperparameters(random_state, NUM_SAMPLES):
-            if hyperparameters in self.combinations:
-                continue
-
-            implicit_model = self.fit_implicit_model(hyperparameters, train, random_state)
+                implicit_model = self.fit_implicit_model(hyperparameters, train, random_state)
+                self.evaluation(implicit_model, (train, test))
+        else:
+            implicit_model = self.fit_implicit_model(None, train, random_state)
             self.evaluation(implicit_model, (train, test))
 
 if __name__ == "__main__":
