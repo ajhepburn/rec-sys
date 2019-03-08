@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import sys
 import json
@@ -15,18 +16,68 @@ from spotlight.cross_validation import random_train_test_split
 from spotlight.evaluation import precision_recall_score, mrr_score
 
 NUM_SAMPLES = 100
+DEFAULT_PARAMS = {
+            'learning_rate': 0.01,
+            'loss': 'pointwise',
+            'batch_size': 256,
+            'embedding_dim': 32,
+            'n_iter': 10,
+            'l2': 0.0
+        }
 
 class Results:
-    def __init__(self, filename):
+    def __init__(self, filename: str):
         self._respath = './log/models/spotlightimplicitmodel/results/'
         self._filename = filename
+        self._hash = lambda x : hashlib.md5(json.dumps(x, sort_keys=True).encode('utf-8')).hexdigest()
         open(self._respath+self._filename, 'a+')
+
+    def save(self, evaluation: dict, hyperparameters: dict):
+        result = {
+            'hyperparameters': self._hash(hyperparameters),
+            'evaluation': evaluation
+        }
+        with open(self._respath+self._filename, 'a+') as out:
+            out.write(json.dumps(result) + '\n')
+
+    def best(self):
+        results = sorted([x for x in self],
+                         key=lambda x: -x['test']['mrr'])
+
+        if results:
+            return results[0]
+        return None
+
+    def __getitem__(self, hyperparams):
+        params_hash = self._hash(hyperparams)
+        with open(self._respath+self._filename, 'r+') as fle:
+            for line in fle:
+                datum = json.loads(line)
+
+                if datum['hyperparameters'] == params_hash:
+                    del datum['hyperparameters']
+                    return datum
+        raise KeyError
+
+    def __contains__(self, x):
+        try:
+            self[x]
+            return True
+        except KeyError:
+            return False
+
+    def __iter__(self):
+        with open(self._respath+self._filename, 'r+') as f:
+            for line in f:
+                datum = json.loads(line)
+                del datum['hyperparameters']
+                yield datum
+
 
 class SpotlightImplicitModel:
     def __init__(self, default=False):
         self.logpath = './log/models/spotlightimplicitmodel/'
         self.rpath = './data/csv/cashtags_clean.csv'
-        self.default = default
 
     def logger(self):
         """Sets logger config to both std.out and to log ./log/io/csv/cleaner
@@ -88,7 +139,7 @@ class SpotlightImplicitModel:
         interactions = Interactions(
             user_ids=user_ids, 
             item_ids=cashtag_ids, 
-            timestamps=np.array([int(x[len(x)-1]) for x in timestamps]), 
+            timestamps=np.array([int(x[0]) for x in timestamps]), 
             weights=normalised_weights
         )
         logger.info("Build interactions object: {}".format(interactions))
@@ -120,9 +171,9 @@ class SpotlightImplicitModel:
             yield params
         
 
-    def fit_implicit_model(self, hyperparameters: dict, train: Interactions, random_state: np.random.RandomState) -> ImplicitFactorizationModel:
+    def fit_implicit_model(self, train: Interactions, random_state: np.random.RandomState, hyperparameters: dict=None) -> ImplicitFactorizationModel:
         logger = logging.getLogger()
-        if not self.default:
+        if hyperparameters:
             logger.info("Beginning fitting implicit model... \n Hyperparameters: \n {0}".format(
                 json.dumps({i:hyperparameters[i] for i in hyperparameters if i!='use_cuda'})
             ))
@@ -165,13 +216,29 @@ class SpotlightImplicitModel:
             train_rec.mean(),
             test_rec.mean()
         ))
+        return {
+            'train': {
+                'precision':train_prec.mean(),
+                'recall':train_rec.mean(),
+                'mrr':train_mrr,
+            },
+            'test': {
+                'precision':test_prec.mean(),
+                'recall':test_rec.mean(),
+                'mrr':test_mrr,
+            },
+        }
 
-    def run(self):
+    def run(self, results_file: str=None, default: str=False):
         self.logger()
+        logger = logging.getLogger()
         random_state = np.random.RandomState(100)
-
         init_time = str(datetime.now())[:-7]
-        results = Results('{}_results.txt'.format(init_time))
+
+        if not results_file:
+            results = Results('{}_results.txt'.format(init_time))
+        else:
+            results = Results('{0}results/{1}.txt'.format(self.logpath, results_file))
         best_result = results.best()
 
         df_interactions, df_timestamps, df_weights = self.csv_to_df(months=3)
@@ -179,17 +246,22 @@ class SpotlightImplicitModel:
         interactions = self.build_interactions_object(df_interactions, df_timestamps, df_weights)
         train, test = self.cross_validation(interactions)
         
-        if not self.default:
+        if not default:
             for hyperparameters in self.sample_implicit_hyperparameters(random_state, NUM_SAMPLES):
-                if hyperparameters in self.combinations:
+                if hyperparameters in results:
                     continue
 
-                implicit_model = self.fit_implicit_model(hyperparameters, train, random_state)
-                self.evaluation(implicit_model, (train, test))
+                implicit_model = self.fit_implicit_model(hyperparameters=hyperparameters, train=train, random_state=random_state)
+                evaluation = self.evaluation(implicit_model, (train, test))
+                results.save(evaluation, hyperparameters)
         else:
-            implicit_model = self.fit_implicit_model(None, train, random_state)
-            self.evaluation(implicit_model, (train, test))
+            implicit_model = self.fit_implicit_model(train=train, random_state=random_state)
+            evaluation = self.evaluation(implicit_model, (train, test))
+            results.save(DEFAULT_PARAMS, evaluation)
+        
+        if best_result is not None:
+            logger.info('Best result: {}'.format(results.best()))
 
 if __name__ == "__main__":
     sim = SpotlightImplicitModel()
-    sim.run()
+    sim.run(default=True)
