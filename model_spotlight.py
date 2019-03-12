@@ -143,7 +143,7 @@ class SpotlightModel:
 
     """
 
-    def __init__(self, models: tuple):
+    def __init__(self):
         self._logpath = './log/models/spotlightimplicitmodel/'
         self._rpath = './data/csv/cashtags_clean.csv'
         self._models = 'S_POOL'
@@ -252,22 +252,19 @@ class SpotlightModel:
 
         """
 
-        def interactions_to_sequence(train: Interactions, test: Interactions):
-            train, test = train.to_sequence(), test.to_sequence()
+        def interactions_to_sequence(f_train: Interactions, f_test: Interactions):
+            train, test = f_train.to_sequence(), f_test.to_sequence()
             return train, test
 
         logger = logging.getLogger()
         train, test = random_train_test_split(interactions)
-        train_ids, test_ids = train.item_ids, test.item_ids
         if self._models in ('S_POOL','S_CNN', 'S_LSTM'):
             train, test = interactions_to_sequence(train, test)
 
         logger.info('Split into \n {} and \n {}.'.format(train, test))
         return (
             train,
-            test,
-            train_ids,
-            test_ids
+            test
         )
 
     def sample_implicit_hyperparameters(self, random_state: np.random.RandomState, num: int) -> dict:
@@ -377,12 +374,12 @@ class SpotlightModel:
         if not representation:
             if hyperparameters:
                 net = CNNNet(train.num_items,
-                        embedding_dim=hyperparameters['embedding_dim'],
-                        kernel_width=hyperparameters['kernel_width'],
-                        dilation=hyperparameters['dilation'],
-                        num_layers=hyperparameters['num_layers'],
-                        nonlinearity=hyperparameters['nonlinearity'],
-                        residual_connections=hyperparameters['residual'])
+                             embedding_dim=hyperparameters['embedding_dim'],
+                             kernel_width=hyperparameters['kernel_width'],
+                             dilation=hyperparameters['dilation'],
+                             num_layers=hyperparameters['num_layers'],
+                             nonlinearity=hyperparameters['nonlinearity'],
+                             residual_connections=hyperparameters['residual'])
             else:
                 net = CNNNet(train.num_items)
 
@@ -395,13 +392,13 @@ class SpotlightModel:
                 json.dumps({i:hyperparameters[i] for i in hyperparameters if i != 'use_cuda'})
             ))
             model = ImplicitSequenceModel(loss=hyperparameters['loss'],
-                                    representation=representation,
-                                    batch_size=hyperparameters['batch_size'],
-                                    learning_rate=hyperparameters['learning_rate'],
-                                    l2=hyperparameters['l2'],
-                                    n_iter=hyperparameters['n_iter'],
-                                    use_cuda=True,
-                                    random_state=random_state)
+                                          representation=representation,
+                                          batch_size=hyperparameters['batch_size'],
+                                          learning_rate=hyperparameters['learning_rate'],
+                                          l2=hyperparameters['l2'],
+                                          n_iter=hyperparameters['n_iter'],
+                                          use_cuda=True,
+                                          random_state=random_state)
         else:
             model = ImplicitSequenceModel(use_cuda=True)
             logger.info("Beginning fitting implicit sequence {} model with default hyperparameters...".format(out_string))
@@ -410,7 +407,7 @@ class SpotlightModel:
         model.predict(train.sequences)
         return model
 
-    def evaluation(self, model, interactions: tuple, ids: tuple = None):
+    def evaluation(self, model, interactions: tuple):
         """Evaluates models on a number of metrics
 
         Takes model and evaluates it by Precision@K/Recall@K, Mean Reciprocal Rank metrics.
@@ -426,7 +423,6 @@ class SpotlightModel:
 
         logger = logging.getLogger()
         train, test = interactions
-        train_ids, test_ids = ids
 
         logger.info("Beginning model evaluation...")
 
@@ -440,20 +436,22 @@ class SpotlightModel:
             train_mrr, test_mrr
         ))
 
+        k = 5
         if self._models in ('S_POOL', 'S_CNN', 'S_LSTM'):
-            print(type(train_ids), type(test_ids))
-            train_prec, train_rec = sequence_precision_recall_score(model, train)
-            test_prec, test_rec = sequence_precision_recall_score(model, test)
+            train_prec, train_rec = sequence_precision_recall_score(model, train, k=k)
+            test_prec, test_rec = sequence_precision_recall_score(model, test, k=k)
         else:
-            train_prec, train_rec = precision_recall_score(model, train)
-            test_prec, test_rec = precision_recall_score(model, test)
-        logger.info('Train Precision@10 {:.8f}, test Precision@10 {:.8f}'.format(
+            train_prec, train_rec = precision_recall_score(model, train, k=k)
+            test_prec, test_rec = precision_recall_score(model, test, k=k)
+        logger.info('Train Precision@{k} {:.8f}, test Precision@{k} {:.8f}'.format(
             train_prec.mean(),
-            test_prec.mean()
+            test_prec.mean(),
+            k=k
         ))
-        logger.info('Train Recall@10 {:.8f}, test Recall@10 {:.8f}'.format(
+        logger.info('Train Recall@{k} {:.8f}, test Recall@{k} {:.8f}'.format(
             train_rec.mean(),
-            test_rec.mean()
+            test_rec.mean(),
+            k=k
         ))
         return {
             'train': {
@@ -497,7 +495,7 @@ class SpotlightModel:
         df_interactions, df_timestamps, df_weights = self.csv_to_df(months=3)
 
         interactions = self.build_interactions_object(df_interactions, df_timestamps, df_weights)
-        train, test, train_ids, item_ids = self.cross_validation(interactions)
+        train, test = self.cross_validation(interactions)
 
         if not defaults:
             for hyperparameters in self.sample_implicit_hyperparameters(random_state, NUM_SAMPLES):
@@ -515,9 +513,9 @@ class SpotlightModel:
                     model = self.model_implicit_factorization(
                         hyperparameters=hyperparameters,
                         train=train,
-                        random_state=random_state,
+                        random_state=random_state
                     )
-                evaluation = self.evaluation(model, (train, test), (train_ids, item_ids))
+                evaluation = self.evaluation(model, (train, test))
                 results.save(evaluation, hyperparameters)
         else:
             if self._models in ('S_POOL','S_CNN', 'S_LSTM'):
@@ -531,12 +529,12 @@ class SpotlightModel:
                     train=train,
                     random_state=random_state,
                 )
-            evaluation = self.evaluation(model, (train, test), (train_ids, item_ids))
+            evaluation = self.evaluation(model, (train, test))
             results.save(DEFAULT_PARAMS, evaluation)
 
         if best_result is not None:
             logger.info('Best result: {}'.format(results.best()))
 
 if __name__ == "__main__":
-    sim = SpotlightModel(models='S_CNN')
+    sim = SpotlightModel()
     sim.run(defaults=True)
