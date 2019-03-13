@@ -146,7 +146,7 @@ class SpotlightModel:
     def __init__(self):
         self._logpath = './log/models/spotlightimplicitmodel/'
         self._rpath = './data/csv/cashtags_clean.csv'
-        self._models = 'S_POOL'
+        self._models = 'S_LSTM'
 
     def logger(self):
         """Sets logger config to both std.out and log ./log/io/csv/spotlightimplicitmodel/
@@ -385,7 +385,7 @@ class SpotlightModel:
 
             representation = net
         
-        out_string = 'CNN' if not representation else representation.upper()
+        out_string = 'CNN' if isinstance(representation, CNNNet) else representation.upper()
         if hyperparameters:
             logger.info("Beginning fitting implicit sequence {0} model... \n Hyperparameters: \n {1}".format(
                 out_string,
