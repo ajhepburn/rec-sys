@@ -1,4 +1,3 @@
-from reco_utils.dataset import movielens
 from reco_utils.dataset.python_splitters import python_random_split, python_stratified_split
 from reco_utils.evaluation.python_evaluation import map_at_k, ndcg_at_k, precision_at_k, recall_at_k
 from reco_utils.recommender.sar.sar_singlenode import SARSingleNode

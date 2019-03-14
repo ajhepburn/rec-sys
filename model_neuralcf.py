@@ -1,7 +1,5 @@
 from reco_utils.recommender.ncf.ncf_singlenode import NCF
 from reco_utils.recommender.ncf.dataset import Dataset as NCFDataset
-from reco_utils.dataset import movielens
-from reco_utils.common.notebook_utils import is_jupyter
 from reco_utils.dataset.python_splitters import python_chrono_split
 from reco_utils.evaluation.python_evaluation import (rmse, mae, rsquared, exp_var, map_at_k, ndcg_at_k, precision_at_k, 
                                                      recall_at_k, get_top_k_items)
