@@ -149,7 +149,7 @@ class SpotlightModel:
         self._models = 'S_LSTM'
 
     def logger(self):
-        """Sets logger config to both std.out and log ./log/io/csv/spotlightimplicitmodel/
+        """Sets logger config to both std.out and log ./log/models/spotlightimplicitmodel/
 
         Also sets the formatting instructions for the log file, prints Time,
         Current Thread, Logging Type, Message.

@@ -221,7 +221,6 @@ class HybridBaselineCashtagRecommender:
                         item_alpha=ITEM_ALPHA,
                     no_components=NUM_COMPONENTS)
 
-        # Run 3 epochs and time it.
         logger.info('Begin fitting collaborative filtering model...')
         model = model.fit(train, epochs=NUM_EPOCHS, num_threads=NUM_THREADS)
         return model
