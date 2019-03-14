@@ -21,7 +21,7 @@ COLUMNS = {
 
 class SmartAdaptiveRec:
     def __init__(self):
-        self._logpath = './log/models/spotlightimplicitmodel/'
+        self._logpath = './log/models/smartadaptiverec/'
         self._rpath = './data/csv/cashtags_clean.csv'
 
     def logger(self):
