@@ -3,9 +3,11 @@ data/
 log/
 legacy/
 embeddings/
+reco_utils/
 utils/
 .vscode
 __pycache__
 
 word2vecReader.py
 word2vecReaderUtils.py
+ds.py
