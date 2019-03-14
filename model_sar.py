@@ -118,12 +118,11 @@ class SmartAdaptiveRec:
             'rating_pred': top_k,
             'k':TOP_K
         }
-        columns_formatted = COLUMNS
-        del columns_formatted['col_timestamp']
-        eval_map = map_at_k(**{**params, **columns_formatted})
-        eval_ndcg = ndcg_at_k(**{**params, **columns_formatted})
-        eval_precision = precision_at_k(**{**params, **columns_formatted})
-        eval_recall = recall_at_k(**{**params, **columns_formatted})
+        col_formatted = {i:COLUMNS[i] for i in COLUMNS if i != 'col_timestamp'}
+        eval_map = map_at_k(**{**params, **col_formatted})
+        eval_ndcg = ndcg_at_k(**{**params, **col_formatted})
+        eval_precision = precision_at_k(**{**params, **col_formatted})
+        eval_recall = recall_at_k(**{**params, **col_formatted})
         print(
             "Model:\t" + model.model_str,
             "Top K:\t%d" % TOP_K,

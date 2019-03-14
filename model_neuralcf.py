@@ -1,10 +1,36 @@
+from reco_utils.recommender.ncf.ncf_singlenode import NCF
+from reco_utils.recommender.ncf.dataset import Dataset as NCFDataset
+from reco_utils.dataset import movielens
+from reco_utils.common.notebook_utils import is_jupyter
+from reco_utils.dataset.python_splitters import python_chrono_split
+from reco_utils.evaluation.python_evaluation import (rmse, mae, rsquared, exp_var, map_at_k, ndcg_at_k, precision_at_k, 
+                                                     recall_at_k, get_top_k_items)
+
 from datetime import datetime
 
 import logging
 import sys
+import time
+import os
 
 import pandas as pd
 import numpy as np
+import tensorflow as tf
+
+# top k items to recommend
+TOP_K = 10
+
+# Model parameters
+EPOCHS = 50
+BATCH_SIZE = 256
+
+COLUMNS = {
+    'col_user': 'user_id',
+    'col_item': 'item_id',
+    'col_rating': 'weight',
+    'col_timestamp': 'item_timestamp'
+}
+
 
 class NeuralCFModel:
     def __init__(self):
@@ -73,8 +99,90 @@ class NeuralCFModel:
         df = df.rename(columns={'item_tag_ids':'item_id','count':'weight'})
         return df
 
+    def split_train_test(self, df: pd.DataFrame) -> NCFDataset:
+        col_formatted = {i:COLUMNS[i] for i in COLUMNS if i != 'col_rating'}
+        train, test = python_chrono_split(**{**{'data':df}, **col_formatted})
+
+        ncf_params = {
+            'train':train,
+            'test':test,
+            'seed':42
+        }
+        data = NCFDataset(**{**ncf_params, **COLUMNS})
+        return (
+            data,
+            train,
+            test
+        )
+
+    def fit_ncf_model(self, data: NCFDataset) -> NCF:
+        model = NCF (
+            n_users=data.n_users, 
+            n_items=data.n_items,
+            model_type="NeuMF",
+            n_factors=4,
+            layer_sizes=[16,8,4],
+            n_epochs=EPOCHS,
+            batch_size=BATCH_SIZE,
+            learning_rate=1e-3,
+            verbose=10,
+        )
+
+        start_time = time.time()
+
+        model.fit(data)
+
+        train_time = time.time() - start_time
+
+        print("Took {} seconds for training.".format(train_time))
+        return model
+
+    def predict_model(self, model: NCF, train: pd.DataFrame) -> pd.DataFrame:
+        start_time = time.time()
+
+        users, items, preds = [], [], []
+        item = list(train.item_id.unique())
+        for user in train.user_id.unique():
+            user = [user] * len(item) 
+            users.extend(user)
+            items.extend(item)
+            preds.extend(list(model.predict(user, item, is_list=True)))
+
+        all_predictions = pd.DataFrame(data={"user_id": users, "item_id":items, "prediction":preds})
+
+        merged = pd.merge(train, all_predictions, on=["user_id", "item_id"], how="outer")
+        all_predictions = merged[merged.weight.isnull()].drop('weight', axis=1)
+
+        test_time = time.time() - start_time
+        print("Took {} seconds for prediction.".format(test_time))
+        return all_predictions
+
+    def evaluation(self, test: pd.DataFrame, all_predictions: pd.DataFrame):
+        params = {
+            'rating_true': test,
+            'rating_pred': all_predictions, 
+            'col_prediction': 'prediction',
+            'k': TOP_K
+        }
+        col_formatted = {i:COLUMNS[i] for i in COLUMNS if i != 'col_timestamp'}
+        eval_map = map_at_k(**{**params, **col_formatted})
+        eval_ndcg = ndcg_at_k(**{**params, **col_formatted})
+        eval_precision = precision_at_k(**{**params, **col_formatted})
+        eval_recall = recall_at_k(**{**params, **col_formatted})
+
+        print("MAP:\t%f" % eval_map,
+            "NDCG:\t%f" % eval_ndcg,
+            "Precision@K:\t%f" % eval_precision,
+            "Recall@K:\t%f" % eval_recall, sep='\n')
+
     def run(self):
-        pass
+        df = self.csv_to_df(months=3)
+        data, train, test = self.split_train_test(df)
+        model = self.fit_ncf_model(data)
+        predictions = self.predict_model(model, train)
+        self.evaluation(test, predictions)
+
 
 if __name__ == "__main__":
-    pass
+    ncf = NeuralCFModel()
+    ncf.run()
