@@ -1,5 +1,5 @@
 from reco_utils.dataset import movielens
-from reco_utils.dataset.python_splitters import python_random_split
+from reco_utils.dataset.python_splitters import python_random_split, python_stratified_split
 from reco_utils.evaluation.python_evaluation import map_at_k, ndcg_at_k, precision_at_k, recall_at_k
 from reco_utils.recommender.sar.sar_singlenode import SARSingleNode
 
@@ -9,8 +9,15 @@ import numpy as np
 import pandas as pd
 import logging
 import sys
+import time
 
 TOP_K = 10
+COLUMNS = {
+    'col_user': 'user_id',
+    'col_item': 'item_id',
+    'col_rating': 'weight',
+    'col_timestamp': 'item_timestamp'
+}
 
 class SmartAdaptiveRec:
     def __init__(self):
@@ -36,7 +43,7 @@ class SmartAdaptiveRec:
                     logging.StreamHandler(sys.stdout)
                 ])
 
-    def csv_to_df(self, months: int) -> tuple:
+    def csv_to_df(self, months: int) -> pd.DataFrame:
         """Reads in CSV file, converts it to a number of Pandas DataFrames.
 
         Returns:
@@ -77,12 +84,67 @@ class SmartAdaptiveRec:
         normalised_weights = normalise(weights)
         df['count'] = normalised_weights
         df = df.rename(columns={'item_tag_ids':'item_id','count':'weight'})
-        print(type(df['weight']))
-        sys.exit(0)
         return df
+
+    def fit_sar_model(self, train: pd.DataFrame) -> SARSingleNode:
+        sar_params = {
+            'similarity_type':"jaccard", 
+            'time_decay_coefficient':30, 
+            'time_now':None, 
+            'timedecay_formula':True,
+        }
+        model = SARSingleNode(**{**sar_params, **COLUMNS})
+        
+        start_time = time.time()
+
+        model.fit(train)
+
+        train_time = time.time() - start_time
+        print("Took {} seconds for training.".format(train_time))
+        return model
+
+    def predict_items(self, model: SARSingleNode, test: pd.DataFrame) -> pd.DataFrame:
+        start_time = time.time()
+
+        top_k = model.recommend_k_items(test, remove_seen=True)
+
+        test_time = time.time() - start_time
+        print("Took {} seconds for prediction.".format(test_time))
+        return top_k
+
+    def evaluation(self, model: SARSingleNode, test: pd.DataFrame, top_k: pd.DataFrame):
+        params = {
+            'rating_true': test,
+            'rating_pred': top_k,
+            'k':TOP_K
+        }
+        columns_formatted = COLUMNS
+        del columns_formatted['col_timestamp']
+        eval_map = map_at_k(**{**params, **columns_formatted})
+        eval_ndcg = ndcg_at_k(**{**params, **columns_formatted})
+        eval_precision = precision_at_k(**{**params, **columns_formatted})
+        eval_recall = recall_at_k(**{**params, **columns_formatted})
+        print(
+            "Model:\t" + model.model_str,
+            "Top K:\t%d" % TOP_K,
+            "MAP:\t%f" % eval_map,
+            "NDCG:\t%f" % eval_ndcg,
+            "Precision@K:\t%f" % eval_precision,
+            "Recall@K:\t%f" % eval_recall, sep='\n'
+        )
 
     def run(self):
         df = self.csv_to_df(months=3)
+        # train, test = python_random_split(df)
+        train, test = python_stratified_split(
+            df, filter_by="user", ratio=0.7,
+            col_user='user_id', col_item='item_id'
+        )
+        model = self.fit_sar_model(train)
+        top_k = self.predict_items(model, test)
+        self.evaluation(model, test, top_k)
+
+
 
 if __name__ == "__main__":
     sar = SmartAdaptiveRec()
