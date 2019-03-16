@@ -5,9 +5,12 @@ legacy/
 embeddings/
 reco_utils/
 utils/
+yoochoose-dataFull/
 .vscode
 __pycache__
 
 word2vecReader.py
 word2vecReaderUtils.py
 ds.py
+
+parse_libfm.py
