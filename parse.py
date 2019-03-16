@@ -3,6 +3,8 @@ from datetime import datetime
 from sklearn.datasets import dump_svmlight_file
 from sklearn.preprocessing import MultiLabelBinarizer
 
+from reco_utils.dataset.python_splitters import python_random_split, python_stratified_split
+
 from os.path import join
 
 import pandas as pd
@@ -152,7 +154,7 @@ class CashtagParser:
 
 class FMParser:
     def __init__(self):
-        self._modelpath = './models/xdeepfm/'
+        self._wpath = './data/libsvm/'
         self._logpath = './log/models/xdeepfm/'
         self._rpath = './data/csv/cashtags_clean.csv'
 
@@ -211,31 +213,37 @@ class FMParser:
         a, b = cols.index('item_timestamp'), cols.index('count')
         cols[b], cols[a] = cols[a], cols[b]
         df2 = df3[cols]
-
-        # weights = np.array(df2['count'].values)
-        # normalise = lambda v: v / np.sqrt(np.sum(v**2))
-        # normalised_weights = normalise(weights)
-        # df2['count'] = normalised_weights
         df2 = df2.rename(columns={'item_tag_ids':'item_id', 'count':'mentions'})
-        df2 = df2.drop(['item_timestamp'], axis=1)
-        df2['user_id'], df2['item_id'] = df2['user_id'].apply(str), df2['item_id'].apply(str)
-        all_items = df2.groupby('user_id',)['item_id'].apply(list)
-        all_counts = df2.groupby('user_id')['mentions'].apply(list)
-        df2['all_item_id'] = dict
-        df2['last_item'] = ''
+        return df2
+
+    def split_train_test(self, df: pd.DataFrame) -> tuple:
+        train, test = python_stratified_split(
+            df, filter_by="user", ratio=0.7,
+            col_user='user_id', col_item='item_id'
+        )
+        return (train, test)
+
+    def format_features_and_targets(self, df: pd.DataFrame) -> tuple:
+        df = df.drop(['item_timestamp'], axis=1)
+        df['user_id'], df['item_id'] = df['user_id'].apply(str), df['item_id'].apply(str)
+        all_items = df.groupby('user_id',)['item_id'].apply(list)
+        all_counts = df.groupby('user_id')['mentions'].apply(list)
+        df['all_item_id'] = dict
+        df['last_item'] = ''
 
         last_user_id, last_item_id = None, None
-        for i, row in df2.iterrows():
+        for i, row in df.iterrows():
             user_id = row['user_id']
-            df2.at[i, 'all_item_id'] = dict(zip(['all_item_id_{0}'.format(i) for i in all_items[user_id]], all_counts[user_id]))
+            df.at[i, 'all_item_id'] = dict(zip(['all_item_id_{0}'.format(i) for i in all_items[user_id]], all_counts[user_id]))
             if user_id != last_user_id:
                 last_user_id, last_item_id = user_id, row['item_id']
                 continue
-            df2.at[i, 'last_item'], last_item_id = 'last_item_id_'+last_item_id, row['item_id']
-        x, y = df2[['user_id', 'item_id', 'all_item_id', 'last_item']].copy(), df2['mentions'].copy()
+            df.at[i, 'last_item'], last_item_id = 'last_item_id_'+last_item_id, row['item_id']
+        x, y = df[['user_id', 'item_id', 'all_item_id', 'last_item']].copy(), df['mentions'].copy()
         return (x, y)
 
-    def df_to_libsvm(self, x: pd.DataFrame, y: pd.DataFrame):
+
+    def df_to_libsvm(self, name: str, x: pd.DataFrame, y: pd.DataFrame):
         all_items, last_item = x.pop('all_item_id'), pd.get_dummies(x.pop('last_item'))
         x = pd.get_dummies(x)
         df_all_item_id = all_items.apply(pd.Series)
@@ -245,11 +253,14 @@ class FMParser:
         x = x.join(df_all_item_id, how='outer')
         x = x.join(last_item, how='outer')
         mat = x.as_matrix()
-        dump_svmlight_file(mat, y, join(self._modelpath, 'svm-output.libsvm'))
+        dump_svmlight_file(mat, y, join(self._wpath, name+'-svm-output.libsvm'))
 
     def run(self):
-        x, y = self.csv_to_df(months=3)
-        self.df_to_libsvm(x, y)
+        data = self.csv_to_df(months=3)
+        (train, test), aliases = self.split_train_test(data), ['train', 'test']
+        splits = [train_t, test_t] = [self.format_features_and_targets(train), self.format_features_and_targets(test)]
+        for i, s in enumerate(splits):
+            self.df_to_libsvm(aliases[i], *s)
         
 
 if __name__ == "__main__":
@@ -257,5 +268,5 @@ if __name__ == "__main__":
     # ab.run()
     # ctp = CashtagParser()
     # ctp.conversion_to_cashtag_orientation()
-    dfm = xDeepFMModel()
-    dfm.run()
+    fmp = FMParser()
+    fmp.run()
