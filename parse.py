@@ -2,6 +2,7 @@ from datetime import datetime
 
 from sklearn.datasets import dump_svmlight_file
 from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.model_selection import train_test_split
 
 from reco_utils.dataset.python_splitters import python_random_split, python_stratified_split
 
@@ -9,7 +10,12 @@ from os.path import join
 
 import pandas as pd
 import numpy as np
-import os, json, sys, logging, csv
+
+import os
+import json
+import sys
+import logging
+import csv
 
 
 class AttributeParser:
@@ -24,26 +30,28 @@ class AttributeParser:
 
     def logger(self):
         """ Sets the logger configuration to report to both std.out and to log to ./log/io/csv/
-        Also sets the formatting instructions for the log file, prints Time, Current Thread, Logging Type, Message.
+        Also sets the formatting instructions for the log file, prints Time, Current Thread,
+        Logging Type, Message.
 
         """
         logging.basicConfig(
-                level=logging.INFO,
-                format="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s",
-                handlers=[
-                    logging.FileHandler("{0}/{1}_log ({2}).log".format(self.logpath, str(datetime.now())[:-7],'metadata_csv')),
-                    logging.StreamHandler(sys.stdout)
-                ])
-    
+            level=logging.INFO,
+            format="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s",
+            handlers=[
+                logging.FileHandler("{0}/{1}_log ({2}).log".format(self.logpath, str(datetime.now())[:-7], 'metadata_csv')),
+                logging.StreamHandler(sys.stdout)
+            ])
+
     def parse(self, l) -> tuple:
-        """ Takes in a single line and attempts to retrieve user and item information for feature engineering.
-        
+        """ Takes in a single line and attempts to retrieve user/item infor for feature engineering.
+
         Will return a tuple filled with None values if:
             * No cashtags are found with at least one industry tag.
         If there are no cashtags at all in a single tweet, the line will be skipped.
 
         Returns:
-            tuple: Returns a tuple of User ID, User location data, Item ID, Item Timestamp, Item Body, Cashtag Titles, Cashtag Industries, Cashtag Sectors
+            tuple: Returns a tuple of User ID, User location data, Item ID, Item Timestamp, Item Body, Cashtag Titles, 
+                Cashtag Industries, Cashtag Sectors
 
         """
 
@@ -159,23 +167,23 @@ class FMParser:
         self._rpath = './data/csv/cashtags_clean.csv'
 
     def logger(self):
-            """Sets logger config to both std.out and log ./log/models/smartadaptiverec/
+        """Sets logger config to both std.out and log ./log/models/smartadaptiverec/
 
-            Also sets the formatting instructions for the log file, prints Time,
-            Current Thread, Logging Type, Message.
+        Also sets the formatting instructions for the log file, prints Time,
+        Current Thread, Logging Type, Message.
 
-            """
-            logging.basicConfig(
-                level=logging.INFO,
-                format="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s",
-                handlers=[
-                    logging.FileHandler("{0}/{1} ({2}).log".format(
-                        self._logpath,
-                        str(datetime.now())[:-7],
-                        'smart_adaptive_rec',
-                    )),
-                    logging.StreamHandler(sys.stdout)
-                ])
+        """
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s",
+            handlers=[
+                logging.FileHandler("{0}/{1} ({2}).log".format(
+                    self._logpath,
+                    str(datetime.now())[:-7],
+                    'smart_adaptive_rec',
+                )),
+                logging.StreamHandler(sys.stdout)
+            ])
 
     def csv_to_df(self, months: int) -> tuple:
         """Reads in CSV file, converts it to a number of Pandas DataFrames.
@@ -200,6 +208,11 @@ class FMParser:
             suffixes=['_1', '']
         ).drop('item_timestamp_1', axis=1)
 
+        df_sector_industry = df[['user_id', 'item_tag_ids', 'item_sectors', 'item_industries']]
+        df_sector_industry = df_sector_industry[['user_id', 'item_tag_ids', 'item_sectors', 'item_industries']].drop_duplicates(
+            subset=['user_id', 'item_tag_ids']
+        )
+
         df2 = df.groupby(
             ['user_id', 'item_tag_ids']
         ).item_timestamp.agg(list).reset_index()
@@ -209,58 +222,99 @@ class FMParser:
         df2['item_timestamp'] = df2['item_timestamp'].apply(lambda x: x[0])
         df2 = df2.sort_values(by=['user_id', 'item_timestamp'])
         df3 = pd.merge(df2, df_weights, on=["user_id", "item_tag_ids"], how="left")        
-        cols = list(df3.columns)
-        a, b = cols.index('item_timestamp'), cols.index('count')
-        cols[b], cols[a] = cols[a], cols[b]
-        df2 = df3[cols]
-        df2 = df2.rename(columns={'item_tag_ids':'item_id', 'count':'mentions'})
+        
+        df3 = pd.merge(df3, df_sector_industry, on=["user_id", "item_tag_ids"], how="left")        
+        df2 = df3.rename(columns={'item_tag_ids':'item_id', 'count':'target'})
         return df2
 
-    def split_train_test(self, df: pd.DataFrame) -> tuple:
-        train, test = python_stratified_split(
-            df, filter_by="user", ratio=0.7,
-            col_user='user_id', col_item='item_id'
-        )
-        return (train, test)
+    def libfm_format(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.assign(target_normalized=df.target.div(
+            df.groupby('user_id').target.transform('sum')
+        ))
+        df = df.drop('target', axis=1)
+        df.columns.values[-1] = 'target'
+        cols = df.columns.tolist()
+        cols = cols[-1:] + cols[:-1]
+        df = df[cols]
 
-    def format_features_and_targets(self, df: pd.DataFrame) -> tuple:
-        df = df.drop(['item_timestamp'], axis=1)
-        df['user_id'], df['item_id'] = df['user_id'].apply(str), df['item_id'].apply(str)
-        all_items = df.groupby('user_id',)['item_id'].apply(list)
-        all_counts = df.groupby('user_id')['mentions'].apply(list)
-        df['all_item_id'] = dict
-        df['last_item'] = ''
+        df['item_timestamp'] = pd.to_datetime(df['item_timestamp'], unit='s')
+        df['item_timestamp'] = df['item_timestamp'].dt.strftime('%U')
 
-        last_user_id, last_item_id = None, None
+        df = df.rename(columns={
+            'user_id':'user', 
+            'item_id':'cashtag', 
+            'item_timestamp': 'week', 
+            'item_sectors': 'sector', 
+            'item_industries': 'industry'
+        })
+
+        df.sector = pd.Categorical(df.sector)
+        df.industry = pd.Categorical(df.industry)
+        df['sector'] = df.sector.cat.codes
+        df['industry'] = df.industry.cat.codes
+
+        user_cashtags = df.groupby('user')['cashtag'].apply(list)
+        user_sectors = df.groupby('user')['sector'].apply(list)
+        user_industries = df.groupby('user')['industry'].apply(list)
+
+        df['user_cashtags'] = ''
+        df['user_sectors'] = ''
+        df['user_industries'] = ''
+
         for i, row in df.iterrows():
-            user_id = row['user_id']
-            df.at[i, 'all_item_id'] = dict(zip(['all_item_id_{0}'.format(i) for i in all_items[user_id]], all_counts[user_id]))
-            if user_id != last_user_id:
-                last_user_id, last_item_id = user_id, row['item_id']
-                continue
-            df.at[i, 'last_item'], last_item_id = 'last_item_id_'+last_item_id, row['item_id']
-        x, y = df[['user_id', 'item_id', 'all_item_id', 'last_item']].copy(), df['mentions'].copy()
-        return (x, y)
+            user_id = row['user']
+            df.at[i, 'user_cashtags'] = user_cashtags[user_id]
+            df.at[i, 'user_sectors'] = user_sectors[user_id]
+            df.at[i, 'user_industries'] = user_industries[user_id]
 
+        listjoin = lambda x: ','.join(map(str, x))
+        df['user_cashtags'] = df['user_cashtags'].apply(listjoin)
+        df['user_sectors'] = df['user_sectors'].apply(listjoin)
+        df['user_industries'] = df['user_industries'].apply(listjoin)
 
-    def df_to_libsvm(self, name: str, x: pd.DataFrame, y: pd.DataFrame):
-        all_items, last_item = x.pop('all_item_id'), pd.get_dummies(x.pop('last_item'))
-        x = pd.get_dummies(x)
-        df_all_item_id = all_items.apply(pd.Series)
-        df_all_item_id.fillna(value=0, inplace=True)
-        df_all_item_id = df_all_item_id.div(df_all_item_id.sum(axis=1), axis=0)
-        df_all_item_id = df_all_item_id.astype(np.float32)
-        x = x.join(df_all_item_id, how='outer')
-        x = x.join(last_item, how='outer')
-        mat = x.as_matrix()
-        dump_svmlight_file(mat, y, join(self._wpath, name+'-svm-output.libsvm'))
+        user_cashtags = df.pop('user_cashtags')
+        user_sectors = df.pop('user_sectors')
+        user_industries = df.pop('user_industries')
+
+        u_cashtags_dummies = user_cashtags.str.get_dummies(sep=',')
+        u_sectors_dummies = user_sectors.str.get_dummies(sep=',')
+        u_industries_dummies = user_industries.str.get_dummies(sep=',')
+
+        u_cashtags_dummies = u_cashtags_dummies.add_prefix('user_cashtags_')
+        u_sectors_dummies = u_sectors_dummies.add_prefix('user_sectors_')
+        u_industries_dummies = u_industries_dummies.add_prefix('user_industries_')
+
+        u_cashtags_dummies = u_cashtags_dummies.div(u_cashtags_dummies.sum(axis=1), axis=0)
+        u_sectors_dummies = u_sectors_dummies.div(u_sectors_dummies.sum(axis=1), axis=0)
+        u_industries_dummies = u_industries_dummies.div(u_industries_dummies.sum(axis=1), axis=0)
+
+        df = pd.get_dummies(data=df, columns=['user', 'cashtag'])
+        df2 = pd.concat([df.pop(x) for x in ['week', 'sector', 'industry']], 1)
+
+        df = pd.concat(
+            [df, u_cashtags_dummies, u_sectors_dummies, u_industries_dummies, df2],
+            axis=1
+        )
+        return df
+
+    def split_train_test(self, df: pd.DataFrame) -> tuple:
+        y = df.pop('target')
+        X_train, X_test, y_train, y_test = train_test_split(df, y, test_size=0.33)
+
+        return (
+            (X_train, y_train),
+            (X_test, y_test)
+        )
 
     def run(self):
+        aliases = ['train', 'test']
         data = self.csv_to_df(months=3)
-        (train, test), aliases = self.split_train_test(data), ['train', 'test']
-        splits = [train_t, test_t] = [self.format_features_and_targets(train), self.format_features_and_targets(test)]
+        
+        df = self.libfm_format(data)
+        splits = (train, test) = self.split_train_test(df)
         for i, s in enumerate(splits):
-            self.df_to_libsvm(aliases[i], *s)
+            X, y = s
+            dump_svmlight_file(X.as_matrix(), y.as_matrix(), join(self._wpath, aliases[i]+'.libsvm'))
         
 
 if __name__ == "__main__":
