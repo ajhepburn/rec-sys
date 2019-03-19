@@ -11,6 +11,7 @@ from os.path import join
 import pandas as pd
 import numpy as np
 
+import scipy
 import os
 import json
 import sys
@@ -163,7 +164,7 @@ class CashtagParser:
 class FMParser:
     def __init__(self):
         self._wpath = './data/libsvm/'
-        self._logpath = './log/models/xdeepfm/'
+        self._logpath = './models/fm/'
         self._rpath = './data/csv/cashtags_clean.csv'
 
     def logger(self):
@@ -227,7 +228,7 @@ class FMParser:
         df2 = df3.rename(columns={'item_tag_ids':'item_id', 'count':'target'})
         return df2
 
-    def libfm_format(self, df: pd.DataFrame) -> pd.DataFrame:
+    def libfm_format(self, df: pd.DataFrame, ret_t: str) -> pd.DataFrame:
         df = df.assign(target_normalized=df.target.div(
             df.groupby('user_id').target.transform('sum')
         ))
@@ -295,26 +296,111 @@ class FMParser:
             [df, u_cashtags_dummies, u_sectors_dummies, u_industries_dummies, df2],
             axis=1
         )
-        return df
+        df = df.applymap(float)
+        target = df.pop('target')
+        X, y = df, target
 
-    def split_train_test(self, df: pd.DataFrame) -> tuple:
-        y = df.pop('target')
-        X_train, X_test, y_train, y_test = train_test_split(df, y, test_size=0.33)
+        return_type = {
+            'df': (df, target.transpose()),
+            'dense': (np.array(X), np.transpose(np.array(y))),
+            'sparse': (scipy.sparse.csr_matrix(X.values).astype(float), scipy.sparse.csr_matrix(y.values).transpose().astype(float))
+        }
+        return return_type[ret_t]
+
+    def split_train_test(self, sparse_matrices) -> tuple:
+        X, y = sparse_matrices
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=5)
+        scipy.sparse.save_npz(join(self._logpath, "y_test.npz"), y_test)
+
 
         return (
             (X_train, y_train),
             (X_test, y_test)
         )
 
+    def to_ffm(self, splits: tuple):
+        train, test = splits
+
+        features = train.columns[1:]
+        print("Features: {}".format(features))
+        categories = train.columns[1:]
+        numerics = []
+
+        currentcode = len(numerics)
+        catdict = {}
+        catcodes = {}
+        for x in numerics:
+            catdict[x] = 0
+        for x in categories:
+            catdict[x] = 1
+
+        noofrows = train.shape[0]
+        noofcolumns = len(features)
+        with open(join(self._wpath, "alltrainffm.txt"), "w") as text_file:
+            for n, r in enumerate(range(noofrows)):
+                if((n%10000)==0):
+                    print('Row',n)
+                datastring = ""
+                datarow = train.iloc[r].to_dict()
+                datastring += str(int(datarow['target']))
+
+
+                for i, x in enumerate(catdict.keys()):
+                    if(catdict[x]==0):
+                        datastring = datastring + " "+str(i)+":"+ str(i)+":"+ str(datarow[x])
+                    else:
+                        if(x not in catcodes):
+                            catcodes[x] = {}
+                            currentcode +=1
+                            catcodes[x][datarow[x]] = currentcode
+                        elif(datarow[x] not in catcodes[x]):
+                            currentcode +=1
+                            catcodes[x][datarow[x]] = currentcode
+
+                        code = catcodes[x][datarow[x]]
+                        datastring = datastring + " "+str(i)+":"+ str(int(code))+":1"
+                datastring += '\n'
+                text_file.write(datastring)
+                
+        noofrows = test.shape[0]
+        noofcolumns = len(features)
+        with open(join(self._wpath, "alltestffm.txt"), "w") as text_file:
+            for n, r in enumerate(range(noofrows)):
+                if((n%10000)==0):
+                    print('Row',n)
+                datastring = ""
+                datarow = test.iloc[r].to_dict()
+                datastring += str(int(datarow['target']))
+
+
+                for i, x in enumerate(catdict.keys()):
+                    if(catdict[x]==0):
+                        datastring = datastring + " "+str(i)+":"+ str(i)+":"+ str(datarow[x])
+                    else:
+                        if(x not in catcodes):
+                            catcodes[x] = {}
+                            currentcode +=1
+                            catcodes[x][datarow[x]] = currentcode
+                        elif(datarow[x] not in catcodes[x]):
+                            currentcode +=1
+                            catcodes[x][datarow[x]] = currentcode
+
+                        code = catcodes[x][datarow[x]]
+                        datastring = datastring + " "+str(i)+":"+ str(int(code))+":1"
+                datastring += '\n'
+                text_file.write(datastring)
+
+
     def run(self):
         aliases = ['train', 'test']
         data = self.csv_to_df(months=3)
-        
-        df = self.libfm_format(data)
-        splits = (train, test) = self.split_train_test(df)
+        inputs = self.libfm_format(data, 'sparse')
+        # splits = train_test_split(pd.concat([*inputs]), test_size=0.33, random_state=5)
+        splits = self.split_train_test(inputs)
+        # self.to_ffm(splits)
         for i, s in enumerate(splits):
             X, y = s
-            dump_svmlight_file(X.as_matrix(), y.as_matrix(), join(self._wpath, aliases[i]+'.libsvm'))
+            dump_svmlight_file(X, y, join(self._wpath, aliases[i]+'.libsvm'))
         
 
 if __name__ == "__main__":
