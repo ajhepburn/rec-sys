@@ -3,6 +3,7 @@ from datetime import datetime
 from sklearn.datasets import dump_svmlight_file
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.model_selection import train_test_split
+from sklearn.utils import shuffle
 
 from reco_utils.dataset.python_splitters import python_random_split, python_stratified_split
 
@@ -248,20 +249,19 @@ class FMParser:
                         print("Removed potential bot, UserID: {}. Logging...".format(row.user))
                         return (row.user, dframe)
             return dframe
+   
         if not os.path.isfile(self._rpath+'fm_bot_clean.csv'):
             print("Dataframe entries: {}, Beginning bot removal...".format(df.shape[0]))
             bot_entries = remove_potential_bots(df)
             while isinstance(bot_entries, tuple):
-                bot_user, df = bot_entries
-                df = df[df.user != bot_user]
-                print("Updated DataFrame, now contains {} entries".format(df.shape[0]))
-                bot_entries = remove_potential_bots(df[df.user != bot_user])
+                bot_user, dframe = bot_entries
+                dframe = dframe[dframe.user != bot_user]
+                print("Updated DataFrame, now contains {} entries".format(dframe.shape[0]))
+                bot_entries = remove_potential_bots(dframe[dframe.user != bot_user])
             df = bot_entries
             print("Bot removal completed. Dataframe entries: {}".format(df.shape[0]))
             df = df.reset_index(drop=True)
             df.to_csv(self._rpath+'fm_bot_clean.csv', sep="\t")
-        else:
-            df = pd.read_csv(self._rpath+'fm_bot_clean.csv', sep='\t')
 
         user_sel = None
         user_sel_tags = []
@@ -286,38 +286,44 @@ class FMParser:
                 df = df.append(neg_sample)
                 user_sel_tags += neg_tags
         
+        df = df.reset_index(drop=True)
+        df = df.drop(df.columns[0], axis=1)
         pos_samples, neg_samples = df[df.target == 1].shape[0], df[df.target == -1].shape[0]
         print("Positive samples = {}, Negative samples = {}".format(pos_samples, neg_samples))
+        df = shuffle(df)
         return df
 
-    def libfm_format_neg_sampling(self, df: pd.DataFrame, ret_t: str) -> tuple:
-        df['target'] = 1
-        cols = df.columns.values.tolist()
-        cols.insert(0, cols.pop(cols.index('target')))
-        cols.remove('item_timestamp')
-        df = df[cols]
+    def libfm_format_neg_sampling(self, ret_t: str, df: pd.DataFrame=None) -> tuple:
+        if df:
+            df['target'] = 1
+            cols = df.columns.values.tolist()
+            cols.insert(0, cols.pop(cols.index('target')))
+            cols.remove('item_timestamp')
+            df = df[cols]
 
-        # cols = df.columns.tolist()
-        # cols = cols[-1:] + cols[:-1]
-        # df = df[cols]
+            # cols = df.columns.tolist()
+            # cols = cols[-1:] + cols[:-1]
+            # df = df[cols]
 
-        df = df.rename(columns={
-            'user_id':'user', 
-            'item_id':'cashtag', 
-            'item_sectors': 'sector', 
-            'item_industries': 'industry'
-        })
+            df = df.rename(columns={
+                'user_id':'user', 
+                'item_id':'cashtag', 
+                'item_sectors': 'sector', 
+                'item_industries': 'industry'
+            })
 
-        df.sector = pd.Categorical(df.sector)
-        df.industry = pd.Categorical(df.industry)
-        df['sector'] = df.sector.cat.codes
-        df['industry'] = df.industry.cat.codes
-        print("Number of positive samples: {}".format(df.shape[0]))
+            df.sector = pd.Categorical(df.sector)
+            df.industry = pd.Categorical(df.industry)
+            df['sector'] = df.sector.cat.codes
+            df['industry'] = df.industry.cat.codes
 
-        # y = df[['target', 'user', 'cashtag']]
-        # X = df.drop('target', axis=1)
-        # print(df.head())
-        df = self.neg_sampling(df)
+            # y = df[['target', 'user', 'cashtag']]
+            # X = df.drop('target', axis=1)
+            # print(df.head())
+            df = self.neg_sampling(df)
+        else:
+            df = pd.read_csv(self._rpath+'fm_bot_clean.csv', sep='\t')
+            df = self.neg_sampling(df)
         sys.exit(0)
         # while isinstance(samples, tuple):
         #     user_id, dframe = samples
@@ -515,8 +521,8 @@ class FMParser:
 
     def run(self):
         aliases = ['train', 'test']
-        data = self.csv_to_df(months=3)
-        inputs = self.libfm_format_neg_sampling(data, 'sparse')
+        # data = self.csv_to_df(months=3)
+        inputs = self.libfm_format_neg_sampling('sparse')
         # splits = train_test_split(pd.concat([*inputs]), test_size=0.33, random_state=5)
         splits = self.split_train_test(inputs, validation=True)
         if len(splits) == 3:
