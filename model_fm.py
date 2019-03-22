@@ -4,7 +4,7 @@ from os import environ
 from sklearn.datasets import load_svmlight_file
 from sklearn.metrics import roc_auc_score, mean_squared_error
 
-from fastFM import mcmc
+from fastFM import als
 from tffm import TFFMRegressor
 
 import xlearn as xl
@@ -30,18 +30,24 @@ class FactorisationMachines:
         # ./libFM -train /media/ntfs/Workspace/Project/rec-sys/data/libsvm/train.libsvm -test /media/ntfs/Workspace/Project/rec-sys/data/libsvm/test.libsvm -task r -dim '1,1,4' -iter 1000 -method mcmc
         predictions = pd.read_csv(join(self._libfm_path, 'output.libfm'), header=None).values.flatten()
         testY = self.y_test
+        rmse = np.sqrt(mean_squared_error(testY, predictions))
         if self.onlyResults: print("Completed LibFM evaluation.")
-        return np.sqrt(mean_squared_error(predictions, testY))
+        else: print("LibFM RMSE: {}".format(rmse))
+        return rmse
 
     def fastfm(self):
-        fm = mcmc.FMRegression(n_iter=0, rank=10)
-        fm.fit_predict(self.X_train, self.y_train, self.X_test)
-        last_pred = None
-        for i in range(100):
-            last_pred = y_pred = fm.fit_predict(self.X_train, self.y_train, self.X_test, n_more_iter=1)
-            if not self.onlyResults: print("Iteration {}, RMSE: {:.6f}".format(i, np.sqrt(mean_squared_error(y_pred, self.y_test))))
-        if self.onlyResults: print("Completed fastFM evaluation.")
-        return last_pred
+        fm = als.FMRegression(n_iter=100, init_stdev=0.1, rank=4, l2_reg_w=0.1, l2_reg_V=0.5)
+        fm.fit(self.X_train, self.y_train)
+        y_pred = fm.predict(self.X_test)
+        return np.sqrt(mean_squared_error(self.y_test, y_pred))
+        # fm = als.FMRegression(n_iter=0, rank=4)
+        # fm.fit_predict(self.X_train, self.y_train, self.X_test)
+        # last_pred = None
+        # for i in range(100):
+        #     last_pred = y_pred = fm.fit_predict(self.X_train, self.y_train, self.X_test, n_more_iter=1)
+        #     if not self.onlyResults: print("Iteration {}, RMSE: {:.6f}".format(i, np.sqrt(mean_squared_error(y_pred, self.y_test))))
+        # if self.onlyResults: print("Completed fastFM evaluation.")
+        # return np.sqrt(mean_squared_error(last_pred, self.y_test))
         
 
     def tffm(self):
@@ -52,7 +58,7 @@ class FactorisationMachines:
         model = TFFMRegressor(
             order=2,
             rank=4,
-            optimizer=tf.train.AdamOptimizer(learning_rate=0.1),
+            optimizer=tf.train.FtrlOptimizer(learning_rate=0.1),
             n_epochs=100,
             batch_size=-1,
             init_std=0.001,
@@ -84,12 +90,14 @@ class FactorisationMachines:
         fm_model.predict(join(self._xlearn_path, 'model.out'), join(self._xlearn_path, 'output.txt'))
         predictions = pd.read_csv(join(self._xlearn_path, 'output.txt'), header=None).values.flatten()
         if self.onlyResults: print("Completed xLearn evaluation.")
-        return np.sqrt(mean_squared_error(predictions, self.y_test))
+        return np.sqrt(mean_squared_error(self.y_test, predictions))
 
-    def run(self, onlyResults=False):
-        print("LibFM RMSE: {:.6f}\nFastFM RMSE: {:.6f}\nTFFM RMSE: {:.6f}\nxLearn RMSE: {:.6f}".format(self.libfm(), self.fastfm(), self.tffm(), self.xlearn()))
-        
+    def run(self):
+        print(self.libfm())
+        print(self.fastfm())
+        print(self.tffm())
+        print(self.xlearn())
 
 if __name__ == "__main__":
-    fm = FactorisationMachines(onlyResults=True)
+    fm = FactorisationMachines(onlyResults=False)
     fm.run()

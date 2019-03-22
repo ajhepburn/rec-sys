@@ -18,7 +18,7 @@ TOP_K = 10
 COLUMNS = {
     'col_user': 'user_id',
     'col_item': 'item_id',
-    'col_rating': 'weight',
+    'col_rating': 'count',
     'col_timestamp': 'item_timestamp'
 }
 
@@ -81,12 +81,15 @@ class RestrictedBoltzmann:
         a, b = cols.index('item_timestamp'), cols.index('count')
         cols[b], cols[a] = cols[a], cols[b]
         df = df3[cols]
-
-        # weights = np.array(df['count'].values)
-        # normalise = lambda v: v / np.sqrt(np.sum(v**2))
-        # normalised_weights = normalise(weights)
-        # df['count'] = normalised_weights
-        df = df.rename(columns={'item_tag_ids':'item_id', 'count':'weight'})
+        # df = df.assign(target=df['count'].div(
+        #     df.groupby('user_id')['count'].transform('sum')
+        # ))
+        # df = df.drop('count', axis=1)
+        df = df.rename(columns={'item_tag_ids':'item_id'})
+        # i = df.columns.values.tolist()
+        # a, b = i.index('item_timestamp'), i.index('target')
+        # i[b], i[a] = i[a], i[b]
+        # df = df[i]
         return df
 
     def stratified_split(self, df: pd.DataFrame) -> tuple:

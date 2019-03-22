@@ -78,22 +78,22 @@ class WideDeepModel:
         ))
         df_weights = df_weights.drop('count', axis=1)
         
-        df_sector_industry = df[['user_id', 'item_tag_ids', 'item_sectors', 'item_industries']]
-        df_sector_industry = df_sector_industry[['user_id', 'item_tag_ids', 'item_sectors', 'item_industries']].drop_duplicates(
+        df_sector_industry = df[['user_id', 'item_tag_ids', 'item_sectors']]
+        df_sector_industry = df_sector_industry[['user_id', 'item_tag_ids', 'item_sectors']].drop_duplicates(
             subset=['user_id', 'item_tag_ids']
         )
 
         df2 = pd.merge(df_weights, df_sector_industry, on=["user_id", "item_tag_ids"], how="left")
         df2 = df2.rename(columns={'item_tag_ids':'item_id'}) 
 
-        df2['item_features_str'] = df2[['item_sectors', 'item_industries']].apply(lambda x: '|'.join(x), axis=1)
-        df = df2[['user_id', 'item_id', 'target','item_features_str']]
+        # df2['item_features_str'] = df2[['item_sectors', 'item_industries']].apply(lambda x: '|'.join(x), axis=1)
+        df = df2[['user_id', 'item_id', 'target','item_sectors']]
 
         features_encoder = sklearn.preprocessing.MultiLabelBinarizer()
         df[ITEM_FEAT_COL] = features_encoder.fit_transform(
-            df['item_features_str'].apply(lambda s: s.split("|"))
+            df['item_sectors'].apply(lambda s: [s])
         ).tolist()
-        df = df.drop('item_features_str', axis=1)
+        df = df.drop('item_sectors', axis=1)
         return df
 
     def fit_wide_deep_model(self, data_splits: tuple, user_item_info: tuple):
