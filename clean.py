@@ -11,6 +11,8 @@ class AttributeCleaner:
     def __init__(self, tweet_frequency=800):
         self.logpath = './log/io/csv/cleaner/'
         self.rpath = './data/csv/metadata.csv'
+        
+        self.logger()
         self.df = self.csv_to_dataframe()
         spacy.prefer_gpu()
         self.nlp = spacy.load('en')
@@ -40,7 +42,8 @@ class AttributeCleaner:
         """
 
         logger = logging.getLogger()
-        data = pd.read_csv(self.rpath, delimiter='\t')
+        data = pd.read_csv(self.rpath, sep='\t')
+        data = data.replace('\r',' ', regex=True)
         logger.info("Read file with {0} entries".format(len(data.index)))
         return data
 
@@ -176,7 +179,7 @@ class AttributeCleaner:
         self.df['user_loc_check'] = False
         self.df = self.df[~self.df.user_location.str.contains(r'[0-9]')]
 
-        chunk_size = int(self.df.shape[0]/(num_processes*4))
+        chunk_size = int(self.df.shape[0]/(num_processes*8))
         chunks = [self.df.ix[self.df.index[i:i + chunk_size]] for i in range(0, self.df.shape[0], chunk_size)]
         index_size_original = len(self.df.index)
 
@@ -206,13 +209,12 @@ class AttributeCleaner:
 
 
     def run(self):
-        self.logger()
         self.clean_rare_users()
         self.clean_notokens()
-        self.clean_user_locations()
         self.clean_timestamps()
+        self.clean_user_locations()
         self.dataframe_to_csv()
 
 if __name__ == "__main__":
-    cleaner = AttributeCleaner(tweet_frequency=450)
+    cleaner = AttributeCleaner(tweet_frequency=600)
     cleaner.run()

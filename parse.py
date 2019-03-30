@@ -151,6 +151,7 @@ class CashtagParser:
                 res = res.reset_index(drop=True)
             return res
 
+        parse_dates = ['item_timestamp']
         df = pd.read_csv(self.rpath, sep='\t')
         df = df.drop(['user_loc_check', 'user_token_check'], axis=1)
         for el in ('item_titles','item_tag_ids','item_cashtags', 'item_tag_trending_score','item_tag_watchlist_count', 'item_industries', 'item_sectors', 'item_exchanges'):
@@ -254,14 +255,14 @@ class FMParser:
             print("Dataframe entries: {}, Beginning bot removal...".format(df.shape[0]))
             bot_entries = remove_potential_bots(df)
             while isinstance(bot_entries, tuple):
-                bot_user, dframe = bot_entries
-                dframe = dframe[dframe.user != bot_user]
-                print("Updated DataFrame, now contains {} entries".format(dframe.shape[0]))
-                bot_entries = remove_potential_bots(dframe[dframe.user != bot_user])
+                bot_user, df = bot_entries
+                df = df[df.user != bot_user]
+                print("Updated DataFrame, now contains {} entries".format(df.shape[0]))
+                bot_entries = remove_potential_bots(df[df.user != bot_user])
             df = bot_entries
             print("Bot removal completed. Dataframe entries: {}".format(df.shape[0]))
             df = df.reset_index(drop=True)
-            df.to_csv(self._rpath+'fm_bot_clean.csv', sep="\t")
+            df.to_csv(self._rpath+'fm_bot_clean.csv', sep="\t", index=False)
 
         user_sel = None
         user_sel_tags = []
@@ -286,15 +287,14 @@ class FMParser:
                 df = df.append(neg_sample)
                 user_sel_tags += neg_tags
         
-        df = df.reset_index(drop=True)
-        df = df.drop(df.columns[0], axis=1)
         pos_samples, neg_samples = df[df.target == 1].shape[0], df[df.target == -1].shape[0]
         print("Positive samples = {}, Negative samples = {}".format(pos_samples, neg_samples))
         df = shuffle(df)
+        df = df.reset_index(drop=True)
         return df
 
-    def libfm_format_neg_sampling(self, ret_t: str, df: pd.DataFrame=None) -> tuple:
-        if df:
+    def libfm_format_neg_sampling(self, df: pd.DataFrame=None) -> tuple:
+        if not os.path.isfile(self._rpath+'fm_bot_clean.csv'):
             df['target'] = 1
             cols = df.columns.values.tolist()
             cols.insert(0, cols.pop(cols.index('target')))
@@ -324,20 +324,23 @@ class FMParser:
         else:
             df = pd.read_csv(self._rpath+'fm_bot_clean.csv', sep='\t')
             df = self.neg_sampling(df)
-        sys.exit(0)
-        # while isinstance(samples, tuple):
-        #     user_id, dframe = samples
-        #     dframe = dframe[dframe.user != user_id]
-        #     samples = self.neg_sampling(df)
-        # df = samples
-        # print(df.shape)
-        # sys.exit(0)
-            
-        ###
-        df = pd.get_dummies(data=df, columns=df.columns.values.tolist())
+            df.to_csv(self._rpath+'fm_neg_samp.csv', sep="\t", index=False)
+    
+    def dummify_values(self, ret_t: str):
+        try:
+            df = pd.read_csv(self._rpath+'fm_neg_samp.csv', sep='\t')
+        except FileNotFoundError:
+            print("Could not find negative sampling file")
+        
+        cols = df.columns.values.tolist()[:]
+        cols.remove('target')
+        X = pd.get_dummies(data=df, columns=cols)
+
+        y = X.pop('target')
+        X, y = X.astype('int32'), y.astype('int32')
 
         return_type = {
-            'df': (df, target.transpose()),
+            'df': (df, y.transpose()),
             'dense': (np.array(X), np.transpose(np.array(y))),
             'sparse': (scipy.sparse.csr_matrix(X.values).astype(float), scipy.sparse.csr_matrix(y.values).transpose().astype(float))
         }
@@ -446,85 +449,87 @@ class FMParser:
             )
         raise("Split Error")
 
-    def to_ffm(self, splits: tuple):
-        train, test = splits
+    # def to_ffm(self, splits: tuple):
+    #     train, test = splits
 
-        features = train.columns[1:]
-        print("Features: {}".format(features))
-        categories = train.columns[1:]
-        numerics = []
+    #     features = train.columns[1:]
+    #     print("Features: {}".format(features))
+    #     categories = train.columns[1:]
+    #     numerics = []
 
-        currentcode = len(numerics)
-        catdict = {}
-        catcodes = {}
-        for x in numerics:
-            catdict[x] = 0
-        for x in categories:
-            catdict[x] = 1
+    #     currentcode = len(numerics)
+    #     catdict = {}
+    #     catcodes = {}
+    #     for x in numerics:
+    #         catdict[x] = 0
+    #     for x in categories:
+    #         catdict[x] = 1
 
-        noofrows = train.shape[0]
-        noofcolumns = len(features)
-        with open(join(self._wpath, "alltrainffm.txt"), "w") as text_file:
-            for n, r in enumerate(range(noofrows)):
-                if((n%10000)==0):
-                    print('Row',n)
-                datastring = ""
-                datarow = train.iloc[r].to_dict()
-                datastring += str(int(datarow['target']))
+    #     noofrows = train.shape[0]
+    #     noofcolumns = len(features)
+    #     with open(join(self._wpath, "alltrainffm.txt"), "w") as text_file:
+    #         for n, r in enumerate(range(noofrows)):
+    #             if((n%10000)==0):
+    #                 print('Row',n)
+    #             datastring = ""
+    #             datarow = train.iloc[r].to_dict()
+    #             datastring += str(int(datarow['target']))
 
 
-                for i, x in enumerate(catdict.keys()):
-                    if(catdict[x]==0):
-                        datastring = datastring + " "+str(i)+":"+ str(i)+":"+ str(datarow[x])
-                    else:
-                        if(x not in catcodes):
-                            catcodes[x] = {}
-                            currentcode +=1
-                            catcodes[x][datarow[x]] = currentcode
-                        elif(datarow[x] not in catcodes[x]):
-                            currentcode +=1
-                            catcodes[x][datarow[x]] = currentcode
+    #             for i, x in enumerate(catdict.keys()):
+    #                 if(catdict[x]==0):
+    #                     datastring = datastring + " "+str(i)+":"+ str(i)+":"+ str(datarow[x])
+    #                 else:
+    #                     if(x not in catcodes):
+    #                         catcodes[x] = {}
+    #                         currentcode +=1
+    #                         catcodes[x][datarow[x]] = currentcode
+    #                     elif(datarow[x] not in catcodes[x]):
+    #                         currentcode +=1
+    #                         catcodes[x][datarow[x]] = currentcode
 
-                        code = catcodes[x][datarow[x]]
-                        datastring = datastring + " "+str(i)+":"+ str(int(code))+":1"
-                datastring += '\n'
-                text_file.write(datastring)
+    #                     code = catcodes[x][datarow[x]]
+    #                     datastring = datastring + " "+str(i)+":"+ str(int(code))+":1"
+    #             datastring += '\n'
+    #             text_file.write(datastring)
                 
-        noofrows = test.shape[0]
-        noofcolumns = len(features)
-        with open(join(self._wpath, "alltestffm.txt"), "w") as text_file:
-            for n, r in enumerate(range(noofrows)):
-                if((n%10000)==0):
-                    print('Row',n)
-                datastring = ""
-                datarow = test.iloc[r].to_dict()
-                datastring += str(int(datarow['target']))
+    #     noofrows = test.shape[0]
+    #     noofcolumns = len(features)
+    #     with open(join(self._wpath, "alltestffm.txt"), "w") as text_file:
+    #         for n, r in enumerate(range(noofrows)):
+    #             if((n%10000)==0):
+    #                 print('Row',n)
+    #             datastring = ""
+    #             datarow = test.iloc[r].to_dict()
+    #             datastring += str(int(datarow['target']))
 
 
-                for i, x in enumerate(catdict.keys()):
-                    if(catdict[x]==0):
-                        datastring = datastring + " "+str(i)+":"+ str(i)+":"+ str(datarow[x])
-                    else:
-                        if(x not in catcodes):
-                            catcodes[x] = {}
-                            currentcode +=1
-                            catcodes[x][datarow[x]] = currentcode
-                        elif(datarow[x] not in catcodes[x]):
-                            currentcode +=1
-                            catcodes[x][datarow[x]] = currentcode
+    #             for i, x in enumerate(catdict.keys()):
+    #                 if(catdict[x]==0):
+    #                     datastring = datastring + " "+str(i)+":"+ str(i)+":"+ str(datarow[x])
+    #                 else:
+    #                     if(x not in catcodes):
+    #                         catcodes[x] = {}
+    #                         currentcode +=1
+    #                         catcodes[x][datarow[x]] = currentcode
+    #                     elif(datarow[x] not in catcodes[x]):
+    #                         currentcode +=1
+    #                         catcodes[x][datarow[x]] = currentcode
 
-                        code = catcodes[x][datarow[x]]
-                        datastring = datastring + " "+str(i)+":"+ str(int(code))+":1"
-                datastring += '\n'
-                text_file.write(datastring)
+    #                     code = catcodes[x][datarow[x]]
+    #                     datastring = datastring + " "+str(i)+":"+ str(int(code))+":1"
+    #             datastring += '\n'
+    #             text_file.write(datastring)
 
 
     def run(self):
         aliases = ['train', 'test']
         # data = self.csv_to_df(months=3)
-        inputs = self.libfm_format_neg_sampling('sparse')
+        if not os.path.isfile(self._rpath+'fm_neg_samp.csv'):
+            self.libfm_format_neg_sampling()
+        dummy_vals = self.dummify_values('sparse')
         # splits = train_test_split(pd.concat([*inputs]), test_size=0.33, random_state=5)
-        splits = self.split_train_test(inputs, validation=True)
+        splits = self.split_train_test(dummy_vals, validation=True)
         if len(splits) == 3:
             aliases = aliases[:1] + ['validation'] + aliases[1:]
         # self.to_ffm(splits)
@@ -534,9 +539,9 @@ class FMParser:
         
 
 if __name__ == "__main__":
-    # ab = AttributeParser('2017_04_01') # 2017_02_01
+    # ab = AttributeParser('2017_07_01') # 2017_02_01
     # ab.run()
-    # ctp = CashtagParser()
-    # ctp.conversion_to_cashtag_orientation()
-    fmp = FMParser()
-    fmp.run()
+    ctp = CashtagParser()
+    ctp.conversion_to_cashtag_orientation()
+    # fmp = FMParser()
+    # fmp.run()
