@@ -161,7 +161,7 @@ class CashtagParser:
         df0['item_tag_trending_score'], df0['item_tag_watchlist_count'] = df0['item_tag_trending_score'].astype(float), df0['item_tag_watchlist_count'].astype(int)
         df0['item_tag_trending_score'] = (df0['item_tag_trending_score'] - min(df0['item_tag_trending_score']))/(max(df0['item_tag_trending_score']) - min(df0['item_tag_trending_score']))
         df0['item_tag_watchlist_count'] = (df0['item_tag_watchlist_count'] - min(df0['item_tag_watchlist_count']))/(max(df0['item_tag_watchlist_count']) - min(df0['item_tag_watchlist_count']))
-        df0.to_csv(self.wpath, sep='\t')
+        df0.to_csv(self.wpath, sep='\t', index=False)
 
 class FMParser:
     def __init__(self):
@@ -266,8 +266,9 @@ class FMParser:
 
         user_sel = None
         user_sel_tags = []
+        init_shape = df.shape[0]
 
-        for _, row in df.iterrows():
+        for i, row in df.iterrows():
             if row.target == -1: continue
             if user_sel != row.user:
                 user_sel = row.user
@@ -298,7 +299,7 @@ class FMParser:
             df['target'] = 1
             cols = df.columns.values.tolist()
             cols.insert(0, cols.pop(cols.index('target')))
-            cols.remove('item_timestamp')
+            # cols.remove('item_timestamp')
             df = df[cols]
 
             # cols = df.columns.tolist()
@@ -309,13 +310,36 @@ class FMParser:
                 'user_id':'user', 
                 'item_id':'cashtag', 
                 'item_sectors': 'sector', 
-                'item_industries': 'industry'
+                'item_industries': 'industry',
+                'item_timestamp': 'week'
             })
+
+            df['week'] = pd.to_datetime(df['week'], unit='s')
+            df['week'] = df['week'].dt.strftime('%U')
 
             df.sector = pd.Categorical(df.sector)
             df.industry = pd.Categorical(df.industry)
             df['sector'] = df.sector.cat.codes
             df['industry'] = df.industry.cat.codes
+
+            user_cashtags = df.groupby('user')['cashtag'].apply(list)
+            user_sectors = df.groupby('user')['sector'].apply(list)
+            user_industries = df.groupby('user')['industry'].apply(list)
+
+            df['user_cashtags'] = ''
+            df['user_sectors'] = ''
+            df['user_industries'] = ''
+
+            for i, row in df.iterrows():
+                user_id = row['user']
+                df.at[i, 'user_cashtags'] = user_cashtags[user_id]
+                df.at[i, 'user_sectors'] = user_sectors[user_id]
+                df.at[i, 'user_industries'] = user_industries[user_id]
+
+            listjoin = lambda x: ','.join(map(str, x))
+            df['user_cashtags'] = df['user_cashtags'].apply(listjoin)
+            df['user_sectors'] = df['user_sectors'].apply(listjoin)
+            df['user_industries'] = df['user_industries'].apply(listjoin)
 
             # y = df[['target', 'user', 'cashtag']]
             # X = df.drop('target', axis=1)
@@ -327,17 +351,38 @@ class FMParser:
             df.to_csv(self._rpath+'fm_neg_samp.csv', sep="\t", index=False)
     
     def dummify_values(self, ret_t: str):
-        try:
-            df = pd.read_csv(self._rpath+'fm_neg_samp.csv', sep='\t')
-        except FileNotFoundError:
-            print("Could not find negative sampling file")
+        df = pd.read_csv(self._rpath+'fm_neg_samp.csv', sep='\t')
+
+        print("Begin dummifying values...")
         
-        cols = df.columns.values.tolist()[:]
-        cols.remove('target')
+        cols = df.columns.values.tolist()[1:-3]
+        
+        user_cashtags = df.pop('user_cashtags')
+        user_sectors = df.pop('user_sectors')
+        user_industries = df.pop('user_industries')
+
+        u_cashtags_dummies = user_cashtags.str.get_dummies(sep=',').astype(np.int8).add_prefix('user_cashtags_')
+        u_sectors_dummies = user_sectors.str.get_dummies(sep=',').astype(np.int8).add_prefix('user_sectors_')
+        u_industries_dummies = user_industries.str.get_dummies(sep=',').astype(np.int8).add_prefix('user_industries_')
+
+        # u_cashtags_dummies = u_cashtags_dummies.add_prefix('user_cashtags_')
+        # u_sectors_dummies = u_sectors_dummies.add_prefix('user_sectors_')
+        # u_industries_dummies = u_industries_dummies.add_prefix('user_industries_')
+
+        u_cashtags_dummies = u_cashtags_dummies.div(u_cashtags_dummies.sum(axis=1), axis=0).round(2)
+        u_sectors_dummies = u_sectors_dummies.div(u_sectors_dummies.sum(axis=1), axis=0).round(2)
+        u_industries_dummies = u_industries_dummies.div(u_industries_dummies.sum(axis=1), axis=0).round(2)
+
         X = pd.get_dummies(data=df, columns=cols)
+
+        X = pd.concat(
+            [X, u_cashtags_dummies, u_sectors_dummies, u_industries_dummies],
+            axis=1
+        )
 
         y = X.pop('target')
         X, y = X.astype('int32'), y.astype('int32')
+        print(X.shape, y.shape)
 
         return_type = {
             'df': (df, y.transpose()),
@@ -524,9 +569,9 @@ class FMParser:
 
     def run(self):
         aliases = ['train', 'test']
-        # data = self.csv_to_df(months=3)
         if not os.path.isfile(self._rpath+'fm_neg_samp.csv'):
-            self.libfm_format_neg_sampling()
+            data = self.csv_to_df(months=6)
+            self.libfm_format_neg_sampling(data)
         dummy_vals = self.dummify_values('sparse')
         # splits = train_test_split(pd.concat([*inputs]), test_size=0.33, random_state=5)
         splits = self.split_train_test(dummy_vals, validation=True)
@@ -535,13 +580,23 @@ class FMParser:
         # self.to_ffm(splits)
         for i, s in enumerate(splits):
             X, y = s
+            print("Writing {} file".format(aliases[i]))
             dump_svmlight_file(X, y, join(self._wpath, aliases[i]+'.libfm'))
+
+class HANAttrParser:
+    def __init__(self):
+        pass
+    
+    def run(self):
+        pass
         
 
 if __name__ == "__main__":
     # ab = AttributeParser('2017_07_01') # 2017_02_01
     # ab.run()
-    ctp = CashtagParser()
-    ctp.conversion_to_cashtag_orientation()
+    # ctp = CashtagParser()
+    # ctp.conversion_to_cashtag_orientation()
     # fmp = FMParser()
     # fmp.run()
+    hanparse = HANAttrParser()
+    hanparse.run()
