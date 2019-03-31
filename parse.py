@@ -631,7 +631,7 @@ class TagCatAttrParser:
             'item_exchanges': 'exchange', 
             'item_titles': 'title'
         })
-
+        df = df.drop_duplicates(subset=['id'])
         df.to_csv(self._rpath+'tag_cat_cashtags_clean.csv', sep="\t", index=False)
         #df = df['item_tag_ids', 'i']
     
