@@ -170,7 +170,7 @@ class FMParser:
         self._rpath = './data/csv/'
 
     def logger(self):
-        """Sets logger config to both std.out and log ./log/models/smartadaptiverec/
+        """Sets logger config to both std.out and log ./log/io/fmparser
 
         Also sets the formatting instructions for the log file, prints Time,
         Current Thread, Logging Type, Message.
@@ -183,7 +183,7 @@ class FMParser:
                 logging.FileHandler("{0}/{1} ({2}).log".format(
                     self._logpath,
                     str(datetime.now())[:-7],
-                    'smart_adaptive_rec',
+                    'fm_parser',
                 )),
                 logging.StreamHandler(sys.stdout)
             ])
@@ -583,9 +583,57 @@ class FMParser:
             print("Writing {} file".format(aliases[i]))
             dump_svmlight_file(X, y, join(self._wpath, aliases[i]+'.libfm'))
 
-class HANAttrParser:
+class TagCatAttrParser:
     def __init__(self):
-        pass
+        self._logpath = './log/io/tcap'
+        self._rpath = './data/csv/'
+
+        self.csv_to_df()
+
+    def logger(self):
+        """Sets logger config to both std.out and log ./log/io/tcap
+
+        Also sets the formatting instructions for the log file, prints Time,
+        Current Thread, Logging Type, Message.
+
+        """
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s",
+            handlers=[
+                logging.FileHandler("{0}/{1} ({2}).log".format(
+                    self._logpath,
+                    str(datetime.now())[:-7],
+                    'tcap',
+                )),
+                logging.StreamHandler(sys.stdout)
+            ])
+
+    def csv_to_df(self) -> tuple:
+        """Reads in CSV file, converts it to a number of Pandas DataFrames.
+
+        Returns:
+            tuple: Returns tuple of Pandas DataFrames; user features, item features and
+                interactions between items.
+
+        """
+        df = pd.read_csv(self._rpath+'cashtags_clean.csv', sep='\t')
+
+        df['item_industries'] = df['item_industries'].str.replace(" ","")
+        df['item_sectors'] = df['item_sectors'].str.replace(" ","")
+
+        df['target'] = df[['item_industries', 'item_sectors']].apply(lambda x: '|'.join(x), axis=1)
+        
+        df = df[['item_tag_ids', 'item_cashtags','item_exchanges', 'item_titles', 'target']]
+        df = df.rename(columns={
+            'item_tag_ids':'id', 
+            'item_cashtags':'symbol', 
+            'item_exchanges': 'exchange', 
+            'item_titles': 'title'
+        })
+
+        df.to_csv(self._rpath+'tag_cat_cashtags_clean.csv', sep="\t", index=False)
+        #df = df['item_tag_ids', 'i']
     
     def run(self):
         pass
@@ -598,5 +646,5 @@ if __name__ == "__main__":
     # ctp.conversion_to_cashtag_orientation()
     # fmp = FMParser()
     # fmp.run()
-    hanparse = HANAttrParser()
-    hanparse.run()
+    tcap = TagCatAttrParser()
+    tcap.run()
