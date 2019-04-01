@@ -7,6 +7,7 @@ import more_itertools as mit
 import logging
 import sys
 import time
+import os
 
 class Queryer:
     def __init__(self):
@@ -99,23 +100,36 @@ class Queryer:
         except KeyError: return None
         return results_df
 
+    def find_missing_tags(self):
+        pass
+
     def run(self):
         df = pd.read_csv(self._rpath+'tag_cat_cashtags_clean.csv', sep='\t')
-        df = df[~df.exchange.str.contains('NYSEArca')]
+        df = df[df.exchange.str.contains('^NASDAQ$|^NYSE$')]
         df = df[['id', 'title', 'target', 'symbol', 'exchange']]
         symbols = ['^'+s+'$' for s in df.symbol.tolist()]
-        symbols_split = [list(c) for c in mit.divide(8, symbols)]
-        results = pd.DataFrame()
-        for i, s in enumerate(symbols_split):
-            print("Parsing symbol list of size: {}, List: {}/{}".format(len(s), i+1, len(symbols_split)))
-            symbols = '|'.join(s)
-            query_results = self.run_query(symbols)
-            results = results.append(query_results)
-        print("Size of results returned: {}".format(results.shape[0]))
+        symbols = '|'.join(symbols)
+        print(symbols)
+        try:
+            results = pd.read_csv(self._rpath+'tag_cat_results.csv', sep='\t')
+        except FileNotFoundError:
+            symbols = ['^'+s+'$' for s in df.symbol.tolist()]
+            symbols_split = [list(c) for c in mit.divide(8, symbols)]
+            results = pd.DataFrame()
+            for i, s in enumerate(symbols_split):
+                print("Parsing symbol list of size: {}, List: {}/{}".format(len(s), i+1, len(symbols_split)))
+                symbols = '|'.join(s)
+                query_results = self.run_query(symbols)
+                results = results.append(query_results)
+            print("Size of results returned: {}".format(results.shape[0]))
+            results.to_csv(self._rpath+'tag_cat_results.csv', sep="\t", index=False)
+        # print(df.symbol.shape[0]-len(results['symbol'].tolist()))
+        differences = df[~df['symbol'].isin(results['symbol'].tolist())]
+        print(differences)
 
 
         #symbols = '|'.join(symbols)
-        print("Number of cashtags {}".format(df.shape[0]))
+        #print("Number of cashtags {}".format(df.shape[0]))
         # query_results = self.run_query(symbols)
         # print(query_results)
 
