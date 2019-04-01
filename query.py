@@ -1,6 +1,8 @@
 from datetime import datetime
 from SPARQLWrapper import SPARQLWrapper, JSON
 
+from utils.queries import QUERIES
+
 import pandas as pd
 import more_itertools as mit
 
@@ -8,6 +10,7 @@ import logging
 import sys
 import time
 import os
+import re
 
 class Queryer:
     def __init__(self):
@@ -33,7 +36,7 @@ class Queryer:
                 logging.StreamHandler(sys.stdout)
             ])
 
-    def run_query(self, symbols: str):
+    def run_query(self, symbols: str, query: str):
         sparql = SPARQLWrapper("https://query.wikidata.org/sparql")
         # query = """
         #     PREFIX dbp: <http://dbpedia.org/property/>
@@ -51,36 +54,7 @@ class Queryer:
         #     FILTER(regex(str(?exchange), "{}" ) )
         #     }}
         # """.format(symbol, exch)
-        query = """
-                PREFIX wd: <http://www.wikidata.org/entity/>
-                PREFIX wds: <http://www.wikidata.org/entity/statement/>
-                PREFIX wdv: <http://www.wikidata.org/value/>
-                PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-                PREFIX wikibase: <http://wikiba.se/ontology#>
-                PREFIX p: <http://www.wikidata.org/prop/>
-                PREFIX ps: <http://www.wikidata.org/prop/statement/>
-                PREFIX pq: <http://www.wikidata.org/prop/qualifier/>
-                PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-                PREFIX bd: <http://www.bigdata.com/rdf#>
-
-                SELECT
-                ?item
-                ?title
-                ?itemDescription
-                ?exchangeLabel
-                ?symbol
-                WHERE 
-                {{
-                ?item p:P414 ?exchanges.
-                ?exchanges ps:P414 ?exchange.
-                {{ ?exchanges pq:P249 ?symbol. }} 
-                    UNION {{ ?item wdt:P249 ?symbol }} .
-                ?item rdfs:label ?title . 
-                FILTER(REGEX(?symbol, "{}" ))
-                FILTER(lang(?title) = "en")
-                SERVICE wikibase:label {{ bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }}
-                }}
-            """.format(symbols)
+        query.format(symbols)
         sparql.setQuery(query)
         sparql.setReturnFormat(JSON)
         results = sparql.query().convert()
@@ -100,8 +74,25 @@ class Queryer:
         except KeyError: return None
         return results_df
 
-    def find_missing_tags(self):
-        pass
+    def query_loop(self, df: pd.DataFrame, query: str):
+        symbols = ['^'+s+'$' for s in df.symbol.tolist()]
+        symbols_split = [list(c) for c in mit.divide(8, symbols)]
+        results = pd.DataFrame()
+        for i, s in enumerate(symbols_split):
+            print("Parsing symbol list of size: {}, List: {}/{}".format(len(s), i+1, len(symbols_split)))
+            symbols = '|'.join(s)
+            query_results = self.run_query(symbols, QUERIES['standard'])
+            results = results.append(query_results)
+        print("Size of results returned: {}".format(results.shape[0]))
+        return results
+
+    def find_missing_tags(self, diff: pd.DataFrame):
+        regex_pat = re.compile(r'Incorporated|Corporation|Company|Inc Common Stock|QQQ|ETF|PLC|SA|Inc|Corp|Ltd|LP|Co', flags=re.IGNORECASE)
+        diff['title'] = diff['title'].str.replace('[^\w\s]','')
+        diff['title'] = diff['title'].str.strip()
+        diff['title'] = diff['title'].str.replace(regex_pat, '')
+        print("Remaining symbols: {}".format(diff.shape[0]))
+        results = self.query_loop(diff, QUERIES['by_name'])
 
     def run(self):
         df = pd.read_csv(self._rpath+'tag_cat_cashtags_clean.csv', sep='\t')
@@ -109,24 +100,23 @@ class Queryer:
         df = df[['id', 'title', 'target', 'symbol', 'exchange']]
         symbols = ['^'+s+'$' for s in df.symbol.tolist()]
         symbols = '|'.join(symbols)
-        print(symbols)
         try:
             results = pd.read_csv(self._rpath+'tag_cat_results.csv', sep='\t')
         except FileNotFoundError:
-            symbols = ['^'+s+'$' for s in df.symbol.tolist()]
-            symbols_split = [list(c) for c in mit.divide(8, symbols)]
-            results = pd.DataFrame()
-            for i, s in enumerate(symbols_split):
-                print("Parsing symbol list of size: {}, List: {}/{}".format(len(s), i+1, len(symbols_split)))
-                symbols = '|'.join(s)
-                query_results = self.run_query(symbols)
-                results = results.append(query_results)
-            print("Size of results returned: {}".format(results.shape[0]))
+            # symbols = ['^'+s+'$' for s in df.symbol.tolist()]
+            # symbols_split = [list(c) for c in mit.divide(8, symbols)]
+            # results = pd.DataFrame()
+            # for i, s in enumerate(symbols_split):
+            #     print("Parsing symbol list of size: {}, List: {}/{}".format(len(s), i+1, len(symbols_split)))
+            #     symbols = '|'.join(s)
+            #     query_results = self.run_query(symbols, QUERIES['standard'])
+            #     results = results.append(query_results)
+            # print("Size of results returned: {}".format(results.shape[0]))
+            results = self.query_loop(df, QUERIES['standard'])
             results.to_csv(self._rpath+'tag_cat_results.csv', sep="\t", index=False)
         # print(df.symbol.shape[0]-len(results['symbol'].tolist()))
-        differences = df[~df['symbol'].isin(results['symbol'].tolist())]
-        print(differences)
-
+        diff = df[~df['symbol'].isin(results['symbol'].tolist())].copy()
+        self.find_missing_tags(diff)
 
         #symbols = '|'.join(symbols)
         #print("Number of cashtags {}".format(df.shape[0]))
