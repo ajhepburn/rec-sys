@@ -16,19 +16,29 @@ import re
 import codecs, difflib
 
 class Queryer:
-    def __init__(self):
+    def __init__(self, source=None):
         self._logpath = './log/database/dbquery'
         self._rpath = './data/csv/'
         self._wpath = './data/txt/queryer/levenshtein/'
+        self.source = source
         
-        try:
-            self.results = pd.read_csv(self._rpath+'tag_cat_results.csv', sep='\t')
-            self.df = self.results
-        except FileNotFoundError:
-            self.results = pd.DataFrame()
-            self.df = pd.read_csv(self._rpath+'tag_cat_cashtags_clean.csv', sep='\t')
-            self.df = self.clean_results(self.df, 'standard')
-            self.df = self.df[['id', 'title', 'target', 'symbol', 'exchange']]
+        if self.source is 'Wikidata':
+            try:
+                self.results = pd.read_csv(self._rpath+'tag_cat_results.csv', sep='\t')
+                self.df = self.results
+            except FileNotFoundError:
+                self.results = pd.DataFrame()
+                self.df = pd.read_csv(self._rpath+'tag_cat_cashtags_clean.csv', sep='\t')
+                self.df = self.clean_results(self.df, 'standard')
+                self.df = self.df[['id', 'title', 'target', 'symbol', 'exchange']]
+        else:
+            try:
+                self.results = pd.read_csv(self._rpath+'tag_cat_dbpedia_results.csv', sep='\t')
+                self.df = self.results
+            except FileNotFoundError:
+                self.results = pd.DataFrame()
+                self.df = pd.read_csv(self._rpath+'tag_cat_results_new.csv', sep='\t')
+
         self.not_found = pd.DataFrame()
 
     def logger(self):
@@ -63,20 +73,79 @@ class Queryer:
         results_df = pd.DataFrame()
 
         try:
-            print(results)
             if results['results']['bindings']:
                 results_df = pd.io.json.json_normalize(results['results']['bindings'])
-                results_df['exchangeLabel.value'] = results_df['exchangeLabel.value'].str.replace("New York Stock Exchange","NYSE")            
-                results_df = results_df[['symbol.value','exchangeLabel.value','title.value','itemDescription.value', 'item.value']] if keyword is 'standard' else results_df[['exchangeLabel.value','title.value','itemDescription.value', 'item.value']]  
-                results_df = results_df.rename(columns={
-                    'symbol.value':'symbol', 
-                    'exchangeLabel.value':'exchange', 
-                    'title.value': 'title',
-                    'itemDescription.value': 'wdDescription',
-                    'item.value':'wdEntity'
-                })
+                if keyword is not 'dbpedia':
+                    results_df['exchangeLabel.value'] = results_df['exchangeLabel.value'].str.replace("New York Stock Exchange","NYSE")            
+                    results_df = results_df[['symbol.value','exchangeLabel.value','title.value','itemDescription.value', 'item.value']] if keyword is 'standard' else results_df[['exchangeLabel.value','title.value','itemDescription.value', 'item.value']]  
+                    results_df = results_df.rename(columns={
+                        'symbol.value':'symbol', 
+                        'exchangeLabel.value':'exchange', 
+                        'title.value': 'title',
+                        'itemDescription.value': 'wdDescription',
+                        'item.value':'wdEntity'
+                    })
+                else:
+                    results_df = results_df[['key.value', 'title.value', 'comment.value', 'symbol.value', 'exchange.value', 'dbpEntity.value', 'wdEntity.value']]
+                    results_df = results_df.replace(regex={r'\t': ' '}) 
+                    results_df = results_df.rename(columns={
+                        'key.value':'key', 
+                        'title.value':'title', 
+                        'comment.value': 'dbDescription',
+                        'symbol.value': 'symbol',
+                        'exchange.value':'exchange',
+                        'dbpEntity.value': 'dbpEntity',
+                        'wdEntity.value': 'wdEntity'
+                    })
         except KeyError: return None
         return results_df
+
+    def dbp_symbols_query_gen(self):
+        results = pd.DataFrame()
+        wd_entries_rows = self.df[~self.df.wdEntity.isna() & self.df.dbpEntity.isna()]
+        print(wd_entries_rows)
+        sys.exit(0)
+        symbols = []
+        for _, row in wd_entries_rows.iterrows():
+            symbol = row.exchange+'|'+row.symbol+'|'+row.wdEntity
+            symbols.append(symbol)
+        symbols_split = [list(c) for c in mit.divide(64, symbols)]
+
+        for i, split in enumerate(symbols_split):
+            print("Parsing symbol list of size: {}, List: {}/{}".format(len(split), i+1, len(symbols_split)))
+            values = []
+            for s in split:
+                s_members = s.split('|')
+                exchange_symbol_string = ''.join(s_members[:-1])
+                wd_sym_link = s_members[2]
+                values.append("""( "{}" <{}>) """.format(exchange_symbol_string, wd_sym_link))
+            values = ''.join(values)
+
+            query = """
+                PREFIX yago: <http://dbpedia.org/class/yago/>
+                PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+                SELECT ?key  ?title ?comment ?symbol ?exchange ?dbpEntity ?wdEntity
+                WHERE {{
+                    ?dbpEntity rdfs:label ?title.
+                    ?dbpEntity rdfs:comment ?comment.
+                    OPTIONAL {{ ?dbpEntity dbp:symbol ?symbol . }}
+                    ?dbpEntity rdf:type ?exchange.
+                    ?dbpEntity owl:sameAs ?wdEntity.
+                    FILTER (lang(?title) = "en" && lang(?comment) = "en").
+                    FILTER(?exchange IN (yago:WikicatCompaniesListedOnNASDAQ,yago:WikicatCompaniesListedOnTheNewYorkStockExchange))
+                    VALUES ( ?key ?wdEntity ) 
+                        {{ {} }}
+                }}
+                """.format(values)
+
+            results_df = self.run_query(query, 'dbpedia')
+            results = results.append(results_df, ignore_index = True) 
+            time.sleep(1)
+        print("Size of results returned: {}".format(results.shape[0]))
+        return results
 
     def query_loop(self, df: pd.DataFrame, query: str):
         if query is 'standard':
@@ -130,7 +199,20 @@ class Queryer:
                 cols.insert(1, cols.pop(cols.index('title')))
                 self.df = self.df.ix[:, cols]
             self.df = self.df.drop(columns=[v+'_x', v+'_y'])
-        if 'title' in merge_on: self.df = self.df.drop_duplicates()
+        if 'title' in merge_on: self.df = self.df.drop_duplicates(subset=['symbol', 'exchange'])
+
+    def dbpedia_cleaner(self):
+        self.results = pd.read_csv(self._rpath+'tag_cat_results_new.csv', sep='\t')
+        self.df = self.df.drop_duplicates(subset=['key'])
+
+        for i, row in self.results.iterrows():
+            combined_key = row.exchange+row.symbol
+            match_row = self.df.loc[self.df['key'] == combined_key]
+            print(row.dbpEntity)
+            sys.exit(0)
+            if not match_row.empty:
+                self.results.at[i, 'dbpEntity'], self.results.at[i, 'dbpDescription'] = match_row.dbpEntity.values[0], match_row.dbDescription.values[0]
+        
 
     def clean_duplicates(self, df):
         maxes = {}
@@ -144,45 +226,6 @@ class Queryer:
         maxes = [val[0] for val in maxes.values()]
         indexes = df.index.values.tolist()
         return list(set(indexes) - set(maxes))
-
-    def dbp_symbols_query_gen(self):
-        wd_entries_rows = self.df[~self.df.wdEntity.isna()]
-        symbols = []
-        for _, row in wd_entries_rows.iterrows():
-            symbol = row.exchange+'|'+row.symbol+'|'+row.wdEntity
-            symbols.append(symbol)
-        symbols_split = [list(c) for c in mit.divide(256, symbols)]
-
-        for split in symbols_split:
-            values = []
-            for s in split:
-                s_members = s.split('|')
-                exchange_symbol_string = ''.join(s_members[:-1])
-                wd_sym_link = s_members[2]
-                values.append("""( "{}" <{}>) """.format(exchange_symbol_string, wd_sym_link))
-            values = ''.join(values)
-
-            query = """
-                PREFIX yago: <http://dbpedia.org/class/yago/>
-                PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-                PREFIX owl: <http://www.w3.org/2002/07/owl#>
-
-                SELECT ?key ?entity ?title ?exchange ?wdEntity
-                WHERE {{
-                    ?entity rdfs:label ?title.
-                    ?entity rdf:type ?exchange.
-                    ?entity owl:sameAs ?wdEntity.
-                    FILTER (lang(?title) = "en").
-                    FILTER(?exchange IN (yago:WikicatCompaniesListedOnNASDAQ,yago:WikicatCompaniesListedOnTheNewYorkStockExchange))
-                    VALUES ( ?key ?wdEntity ) 
-                        {{ {} }}
-                }}
-                """.format(values)
-
-            results_df = self.run_query(query, 'dbpedia')
-            time.sleep(1)
-            sys.exit(0)
 
     def clean_results(self, df: pd.DataFrame, keyword: str):
         #STANDARD
@@ -204,7 +247,7 @@ class Queryer:
         return df
 
     def run(self, source=None):
-        if source is 'Wikidata':
+        if self.source is 'Wikidata':
             if self.results.empty:
                 self.results = self.query_loop(self.df, 'standard')
                 self.results = self.clean_results(self.results, 'standard')
@@ -218,9 +261,13 @@ class Queryer:
             self.merge_and_remove_duplicates(['title', 'exchange'], ['wdDescription', 'wdEntity'])
             self.df.to_csv(self._rpath+'tag_cat_results.csv', sep="\t", index=False)
             print("Items with wikidata entries: {}".format(self.df[~self.df.wdEntity.isna()].shape[0]))
-        if source is 'DBPedia':
-            self.dbp_symbols_query_gen()
+        if self.source is 'DBPedia':
+            if self.results.empty:
+                self.results = self.dbp_symbols_query_gen()
+                self.results.to_csv(self._rpath+'tag_cat_dbpedia_results.csv', sep='\t', index=False)
+            self.dbpedia_cleaner()
+            self.results.to_csv(self._rpath+'tag_cat_results_new.csv', sep='\t', index=False)
 
 if __name__ == "__main__":
-    queryer = Queryer()
-    queryer.run('DBPedia')
+    queryer = Queryer('DBPedia')
+    queryer.run()
