@@ -51,14 +51,19 @@ class Queryer:
             ])
 
     def run_query(self, symbols: str, keyword: str):
-        sparql = SPARQLWrapper("https://query.wikidata.org/sparql")
-        query = queryFormatter(keyword, symbols)
+        if keyword is 'dbpedia':
+            sparql = SPARQLWrapper("http://dbpedia.org/sparql")
+            query = symbols
+        else:
+            sparql = SPARQLWrapper("https://query.wikidata.org/sparql")
+            query = queryFormatter(keyword, symbols)
         sparql.setQuery(query)
         sparql.setReturnFormat(JSON)
         results = sparql.query().convert()
         results_df = pd.DataFrame()
 
         try:
+            print(results)
             if results['results']['bindings']:
                 results_df = pd.io.json.json_normalize(results['results']['bindings'])
                 results_df['exchangeLabel.value'] = results_df['exchangeLabel.value'].str.replace("New York Stock Exchange","NYSE")            
@@ -90,30 +95,6 @@ class Queryer:
         print("Size of results returned: {}".format(results.shape[0]))
         return results
 
-    # def fuzzy_string_comparison(self, df: pd.DataFrame, df_old: pd.DataFrame, keyword: str):
-    #     cashtags_main = df_old['title'].tolist()
-    #     cashtags_main = [s.lower() for s in cashtags_main]
-    #     df['keep'] = True
-    #     print("Size of results DataFrame (NYSE/NASDAQ only): {}".format(df.shape[0]))
-    #     for i, row in df.iterrows():
-    #         title = row['title'].lower()
-    #         ratios = {}
-    #         for tag in cashtags_main:
-    #             # lev = difflib.SequenceMatcher(None, tag, title).ratio()
-    #             lev = _levenshtein.ratio(tag, title)
-    #             ratios[tag] = lev
-    #         matched_string = max(ratios, key=lambda key: ratios[key])
-    #         matched_ratio = ratios[matched_string]
-    #         if keyword is 'remove_found':
-    #             if matched_ratio == 1.0:
-    #                 df.at[i, 'keep'] = False
-    #             else:
-    #                 print("Title in query DF: {}, Title in original DF: {}, Ratio: {}\n".format(colored(title, 'blue'), colored(matched_string, 'blue'), matched_ratio))
-    #                 time.sleep(1.5)
-    #     df = df[df.keep == True]
-    #     print("Size of results DataFrame after string comparison: {}".format(df.shape[0]))
-    #     sys.exit(0)
-    #     return df
     def fuzzy_string_comparison(self, results_df: pd.DataFrame):
         print("Size of result_df: {}".format(results_df.shape[0]))
         cashtags_not_found = self.not_found['title'].tolist()
@@ -164,18 +145,46 @@ class Queryer:
         indexes = df.index.values.tolist()
         return list(set(indexes) - set(maxes))
 
+    def dbp_symbols_query_gen(self):
+        wd_entries_rows = self.df[~self.df.wdEntity.isna()]
+        symbols = []
+        for _, row in wd_entries_rows.iterrows():
+            symbol = row.exchange+'|'+row.symbol+'|'+row.wdEntity
+            symbols.append(symbol)
+        # symbols_split = [list(c) for c in mit.divide(256, symbols)]
+        
+        for s in symbols:
+            s_members = s.split('|')
+            exchange_symbol_string = ''.join(s_members[:-1])
+            wd_sym_link = s_members[2]
+            query = """
+                    PREFIX owl: <http://www.w3.org/2002/07/owl#>
+                    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                    
+                    SELECT ?{0}  
+                    WHERE {{
+                    BIND(<{1}> as ?entity1) {{ ?s owl:sameAs ?entity1 . ?s rdfs:comment ?{0} filter(langmatches(lang(?{0}),"en")) }} 
+                    }}
+                    """.format(exchange_symbol_string, wd_sym_link)
+            
+
+            #selection = selection + """?{} """.format(exchange_symbol_string)
+            #binds.append("""BIND(<{0}> as ?entity{1}) {{ ?s owl:sameAs ?entity{1} . ?s rdfs:comment ?{2} filter(langmatches(lang(?{2}),"en")) }}""".format(wd_sym_link, split.index(s), exchange_symbol_string))
+            #query = selection + "WHERE { " + ' '.join(binds) + " }"
+            self.run_query(query, 'dbpedia')
+            time.sleep(1)
+            sys.exit(0)
+
     def clean_results(self, df: pd.DataFrame, keyword: str):
         #STANDARD
         df = df.copy()
         df = df[df.exchange.str.contains('^NASDAQ$|^NYSE$')]
         regex_companies = re.compile(r'(?:\s+(?:Incorporated|Corporation|Company|Inc Common Stock|QQQ|ETF|PLC|SA|Inc|Corp|Ltd|LP|plc|Group|The|Limited|Partners|nv|Financial|Services|bancshares|semiconductor|foods|energy))+\s*$', flags=re.IGNORECASE)
-        #regex_tld = re.compile(r'.*([^\.]+)(com|net|org|info|int|co\.uk|org\.uk|ac\.uk|uk)$', flags=re.IGNORECASE) 
         df['title'] = df['title'].str.replace('[^\w\s]','')
         df['title'] = df['title'].str.strip()
         df['title'] = df['title'].str.replace(' +|The ', ' ', regex=True)
         df['title'] = df['title'].str.replace('Company', 'Co', regex=True)
         df['title'] = df['title'].str.replace(regex_companies, '')
-        #df['title'] = df['title'].str.replace(regex_tld, '')
         df['title'] = df['title'].str.strip()
         df['title'] = df['title'].str.lower()
 
@@ -201,16 +210,8 @@ class Queryer:
             self.df.to_csv(self._rpath+'tag_cat_results.csv', sep="\t", index=False)
             print("Items with wikidata entries: {}".format(self.df[~self.df.wdEntity.isna()].shape[0]))
         if source is 'DBPedia':
-            
-
-        # try:
-        #     self.results = pd.read_csv(self._rpath+'tag_cat_by_name_temp.csv', sep='\t')
-        #     self.results = self.clean_results(self.results, 'match_names')
-        #     self.merge_and_remove_duplicates(['title', 'exchange'], ['wdDescription', 'wdEntity'])
-        # except FileNotFoundError:
-        
-            #results = self.clean_results(results, 'match_names')
+            self.dbp_symbols_query_gen()
 
 if __name__ == "__main__":
     queryer = Queryer()
-    queryer.run('Wikidata')
+    queryer.run('DBPedia')
