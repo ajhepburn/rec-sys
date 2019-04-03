@@ -151,27 +151,36 @@ class Queryer:
         for _, row in wd_entries_rows.iterrows():
             symbol = row.exchange+'|'+row.symbol+'|'+row.wdEntity
             symbols.append(symbol)
-        # symbols_split = [list(c) for c in mit.divide(256, symbols)]
-        
-        for s in symbols:
-            s_members = s.split('|')
-            exchange_symbol_string = ''.join(s_members[:-1])
-            wd_sym_link = s_members[2]
-            query = """
-                    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-                    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-                    
-                    SELECT ?{0}  
-                    WHERE {{
-                    BIND(<{1}> as ?entity1) {{ ?s owl:sameAs ?entity1 . ?s rdfs:comment ?{0} filter(langmatches(lang(?{0}),"en")) }} 
-                    }}
-                    """.format(exchange_symbol_string, wd_sym_link)
-            
+        symbols_split = [list(c) for c in mit.divide(256, symbols)]
 
-            #selection = selection + """?{} """.format(exchange_symbol_string)
-            #binds.append("""BIND(<{0}> as ?entity{1}) {{ ?s owl:sameAs ?entity{1} . ?s rdfs:comment ?{2} filter(langmatches(lang(?{2}),"en")) }}""".format(wd_sym_link, split.index(s), exchange_symbol_string))
-            #query = selection + "WHERE { " + ' '.join(binds) + " }"
-            self.run_query(query, 'dbpedia')
+        for split in symbols_split:
+            values = []
+            for s in split:
+                s_members = s.split('|')
+                exchange_symbol_string = ''.join(s_members[:-1])
+                wd_sym_link = s_members[2]
+                values.append("""( "{}" <{}>) """.format(exchange_symbol_string, wd_sym_link))
+            values = ''.join(values)
+
+            query = """
+                PREFIX yago: <http://dbpedia.org/class/yago/>
+                PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+                SELECT ?key ?entity ?title ?exchange ?wdEntity
+                WHERE {{
+                    ?entity rdfs:label ?title.
+                    ?entity rdf:type ?exchange.
+                    ?entity owl:sameAs ?wdEntity.
+                    FILTER (lang(?title) = "en").
+                    FILTER(?exchange IN (yago:WikicatCompaniesListedOnNASDAQ,yago:WikicatCompaniesListedOnTheNewYorkStockExchange))
+                    VALUES ( ?key ?wdEntity ) 
+                        {{ {} }}
+                }}
+                """.format(values)
+
+            results_df = self.run_query(query, 'dbpedia')
             time.sleep(1)
             sys.exit(0)
 
