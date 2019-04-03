@@ -91,17 +91,15 @@ class Queryer:
                         'item.value':'wdEntity'
                     })
                 else:
-                    if self.query_type is 'q_simple':
-                        results_df = results_df[['key.value', 'title.value', 'dbpDescription.value', 'dbpEntity.value', 'wdEntity.value']]
-                    elif self.query_type is 'q_categorised':
-                        results_df = results_df[['key.value', 'title.value', 'dbpDescription.value', 'symbol.value', 'exchange.value', 'dbpEntity.value', 'wdEntity.value']]
+                    cols = [s for s in list(results_df) if s.endswith('.value')]
+                    results_df = results_df[cols]
                     results_df = results_df.replace(regex={r'\t': ' '}) 
                     results_df = results_df.rename(columns = lambda x : str(x)[:-6])
         except KeyError: return None
         return results_df
 
     def dbp_symbols_query_gen(self):
-        def q_categorised(symbols: list):
+        def q_categorised_entity(symbols: list):
             results = pd.DataFrame()
             symbols_split = [list(c) for c in mit.divide(512, symbols)]
             for i, split in enumerate(symbols_split):
@@ -120,7 +118,7 @@ class Queryer:
                     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                     PREFIX owl: <http://www.w3.org/2002/07/owl#>
 
-                    SELECT ?key  ?title ?comment ?symbol ?exchange ?dbpEntity ?wdEntity
+                    SELECT ?key ?title ?dbpDescription ?symbol ?exchange ?dbpEntity ?wdEntity
                     WHERE {{
                         ?dbpEntity rdfs:label ?title.
                         ?dbpEntity rdfs:comment ?comment.
@@ -143,7 +141,7 @@ class Queryer:
             results = pd.DataFrame()
             for i, s in enumerate(symbols):
                 s_members = s.split('|')
-                exchange_symbol_string = ''.join(s_members[:-1])
+                exchange_symbol_string = ''.join(s_members[:-2])
                 wd_sym_link = s_members[2]
                 value = """( "{}" <{}>) """.format(exchange_symbol_string, wd_sym_link)
                 print("Parsing symbol: {}, List: {}/{}".format(exchange_symbol_string, i+1, len(symbols)))
@@ -153,10 +151,11 @@ class Queryer:
                     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                     PREFIX owl: <http://www.w3.org/2002/07/owl#>
 
-                    SELECT DISTINCT ?key ?title ?comment ?dbpEntity ?wdEntity
+                    SELECT DISTINCT ?key ?title ?dbpDescription ?symbol ?exchange ?dbpEntity ?wdEntity
                     WHERE {{
                         ?dbpEntity rdfs:label ?title.
                         ?dbpEntity rdfs:comment ?comment.
+                        OPTIONAL {{ ?dbpEntity dbp:symbol ?symbol . ?dbpEntity rdf:type ?exchange.}}
                         ?dbpEntity owl:sameAs ?wdEntity.
                         FILTER (lang(?title) = "en" && lang(?comment) = "en").
                         VALUES ( ?key ?wdEntity ) 
@@ -168,10 +167,47 @@ class Queryer:
                 time.sleep(0.5)
             return results
 
-        wd_entries_rows = self.df[~self.df.wdEntity.isna() & self.df.dbpEntity.isna()]
+        def q_categorised_title_only(symbols: list):
+            results = pd.DataFrame()
+            symbols_split = [list(c) for c in mit.divide(4, symbols)]
+            for i, split in enumerate(symbols_split):
+                print("Parsing symbol list of size: {}, List: {}/{}".format(len(split), i+1, len(symbols_split)))
+                values = []
+                for s in split:
+                    s_members = s.split('|')
+                    exchange_symbol_string = ''.join(s_members[:-2])
+                    title = s_members[3]
+                    values.append("""( "{}" "{}") """.format(exchange_symbol_string, title))
+                values = ''.join(values)
+                    
+                query = """
+                        PREFIX yago: <http://dbpedia.org/class/yago/>
+                        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+                        SELECT DISTINCT ?key ?title ?dbpDescription ?symbol ?exchange ?dbpEntity ?wdEntity
+                        WHERE {{
+                            ?dbpEntity rdfs:label ?title.
+                            ?dbpEntity rdfs:comment ?dbpDescription.
+                            OPTIONAL {{ ?dbpEntity dbp:symbol ?symbol .}}
+                            ?dbpEntity owl:sameAs ?wdEntity.
+                            ?dbpEntity rdf:type ?exchange.
+                            FILTER (lang(?title) = "en" && lang(?dbpDescription) = "en" && contains(lcase(?title),?label) && strstarts(str(?wdEntity),"http://www.wikidata.org/entity/")).
+                            FILTER(?exchange IN (yago:WikicatCompaniesListedOnNASDAQ,yago:WikicatCompaniesListedOnTheNewYorkStockExchange))
+                            VALUES ( ?key ?label ) 
+                                {{ {} }}
+                        }}
+                        """.format(values)
+                results_df = self.run_query(query, 'dbpedia')
+                results = results.append(results_df, ignore_index = True) 
+                time.sleep(0.5)
+            return results
+
+
         symbols = []
-        for _, row in wd_entries_rows.iterrows():
-            symbol = row.exchange+'|'+row.symbol+'|'+row.wdEntity
+        for _, row in self.not_found.iterrows():
+            symbol = row.exchange+'|'+row.symbol+'|'+row.wdEntity+'|'+row.title
             symbols.append(symbol)
 
         results = locals()[self.query_type.lower()](symbols)
@@ -196,33 +232,25 @@ class Queryer:
         print("Size of results returned: {}".format(results.shape[0]))
         return results
 
-    def fuzzy_string_comparison(self, results_df: pd.DataFrame):
-        print("Size of result_df: {}".format(results_df.shape[0]))
-        cashtags_not_found = self.not_found['title'].tolist()
-        results_df['keep'] = False
-        match_count = 0
-        for i, row in results_df.iterrows():
-            curr_title = row['title'].lower()
-            ratios = {}
-            for tag_not_found in cashtags_not_found:
-                # lev = difflib.SequenceMatcher(None, tag, title).ratio()
-                lev = _levenshtein.ratio(curr_title, tag_not_found)
-                ratios[tag_not_found] = lev
-            matched_string = max(ratios, key=lambda key: ratios[key])
-            matched_ratio = ratios[matched_string]
-            if matched_ratio == 1.0:
-                results_df.at[i, 'keep'], match_count = True, match_count+1
-        results_df = results_df[results_df.keep]
-        results_df = results_df.drop(columns=['keep'])
-        print("Size of result_df: {}".format(results_df.shape[0]))
-        return results_df
-
     def merge_and_remove_duplicates(self, merge_on, variables):
+        def clean_duplicates(df):
+            maxes = {}
+            for i, row in df.iterrows():
+                lev = _levenshtein.ratio(row.title_x, row.title_y)
+                if row.title_x not in maxes:
+                    maxes[row.title_x] = (i, lev)
+                else:
+                    if lev > maxes[row.title_x][1]:
+                        maxes[row.title_x] = (i, lev)
+            maxes = [val[0] for val in maxes.values()]
+            indexes = df.index.values.tolist()
+            return list(set(indexes) - set(maxes))
+
         self.df = self.df.merge(self.results, on=merge_on, how='left')
         duplicate_df = pd.concat(g for _, g in self.df.groupby(merge_on[0]) if len(g) > 1)
         if 'symbol' in merge_on:
             duplicate_df = duplicate_df[['title_x', 'title_y']]
-            indexes = self.clean_duplicates(duplicate_df)
+            indexes = clean_duplicates(duplicate_df)
             self.df = self.df.drop(self.df.index[indexes])
         for v in variables:
             self.df[v] = self.df[v+'_x'].where(self.df[v+'_y'].isnull(), self.df[v+'_y'])
@@ -235,31 +263,38 @@ class Queryer:
 
     def dbpedia_cleaner(self):
         self.results = pd.read_csv(self._rpath+'tag_cat_results_new.csv', sep='\t')
-        self.df = self.df[['key.value', 'title.value', 'comment.value', 'dbpEntity.value', 'wdEntity.value']]
-        self.df = self.df.rename(columns = lambda x : str(x)[:-6])
         self.df = self.df.drop_duplicates(subset=['key'])
 
         for i, row in self.results.iterrows():
             combined_key = row.exchange+row.symbol
             match_row = self.df.loc[self.df['key'] == combined_key]
             if not match_row.empty and pd.isna(row.dbpEntity):
+                if pd.isna(match_row.wdEntity.values[0]):
+                    self.results.at[i, 'wdEntity'] = match_row.wdEntity.values[0]
                 self.results.at[i, 'dbpEntity'], self.results.at[i, 'dbpDescription'] = match_row.dbpEntity.values[0], match_row.dbpDescription.values[0]
-        
-    def clean_duplicates(self, df):
-        maxes = {}
-        for i, row in df.iterrows():
-            lev = _levenshtein.ratio(row.title_x, row.title_y)
-            if row.title_x not in maxes:
-                maxes[row.title_x] = (i, lev)
-            else:
-                if lev > maxes[row.title_x][1]:
-                    maxes[row.title_x] = (i, lev)
-        maxes = [val[0] for val in maxes.values()]
-        indexes = df.index.values.tolist()
-        return list(set(indexes) - set(maxes))
 
     def clean_results(self, df: pd.DataFrame, keyword: str):
-        #STANDARD
+        def levenshtein_comparison(results_df: pd.DataFrame):
+            print("Size of result_df: {}".format(results_df.shape[0]))
+            cashtags_not_found = self.not_found['title'].tolist()
+            results_df['keep'] = False
+            match_count = 0
+            for i, row in results_df.iterrows():
+                curr_title = row['title'].lower()
+                ratios = {}
+                for tag_not_found in cashtags_not_found:
+                    # lev = difflib.SequenceMatcher(None, tag, title).ratio()
+                    lev = _levenshtein.ratio(curr_title, tag_not_found)
+                    ratios[tag_not_found] = lev
+                matched_string = max(ratios, key=lambda key: ratios[key])
+                matched_ratio = ratios[matched_string]
+                if matched_ratio == 1.0:
+                    results_df.at[i, 'keep'], match_count = True, match_count+1
+            results_df = results_df[results_df.keep]
+            results_df = results_df.drop(columns=['keep'])
+            print("Size of result_df: {}".format(results_df.shape[0]))
+            return results_df
+
         df = df.copy()
         df = df[df.exchange.str.contains('^NASDAQ$|^NYSE$')]
         regex_companies = re.compile(r'(?:\s+(?:Incorporated|Corporation|Company|Inc Common Stock|QQQ|ETF|PLC|SA|Inc|Corp|Ltd|LP|plc|Group|The|Limited|Partners|nv|Financial|Services|bancshares|semiconductor|foods|energy))+\s*$', flags=re.IGNORECASE)
@@ -273,7 +308,7 @@ class Queryer:
 
         #AFTER RESULTS
         if keyword is 'match_names':
-            return self.fuzzy_string_comparison(df)
+            return levenshtein_comparison(df)
         print("Size of results after cleaning exchanges: {}".format(df.shape[0]))
         return df
 
@@ -294,10 +329,14 @@ class Queryer:
             print("Items with wikidata entries: {}".format(self.df[~self.df.wdEntity.isna()].shape[0]))
 
         def dbpedia():
-            if self.results.empty:
+            self.not_found = self.df[~self.df.wdEntity.isna() & self.df.dbpEntity.isna()]
+            print(self.not_found)
+            sys.exit(0)
+            if self.results.empty:                
                 self.results = self.dbp_symbols_query_gen()
                 self.results.to_csv(self._rpath+'tag_cat_dbpedia_results.csv', sep='\t', index=False)
                 self.df = self.results
+                sys.exit(0)
             self.dbpedia_cleaner()
             self.results.to_csv(self._rpath+'tag_cat_results_new.csv', sep='\t', index=False)
 
@@ -305,5 +344,5 @@ class Queryer:
             
 
 if __name__ == "__main__":
-    queryer = Queryer('dbpedia', 'q_simple')
+    queryer = Queryer('dbpedia', 'q_categorised_title_only')
     queryer.run()
