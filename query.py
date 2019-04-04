@@ -260,14 +260,13 @@ class Queryer:
                             PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                             PREFIX owl: <http://www.w3.org/2002/07/owl#>
 
-                            SELECT DISTINCT ?key ?title ?dbpDescription ?symbol ?exchange ?dbpEntity ?wdEntity
+                            SELECT DISTINCT ?key ?title ?dbpDescription ?symbol ?exchange ?dbpEntity
                             WHERE {{
                                 ?dbpEntity rdfs:label ?title.
                                 ?dbpEntity rdfs:comment ?dbpDescription.
                                 OPTIONAL {{ ?dbpEntity dbp:symbol ?symbol .}}
-                                ?dbpEntity owl:sameAs ?wdEntity.
                                 ?dbpEntity rdf:type ?exchange.
-                                FILTER (lang(?title) = "en" && lang(?dbpDescription) = "en" && contains(lcase(?title),?label) && strstarts(str(?wdEntity),"http://www.wikidata.org/entity/")).
+                                FILTER (lang(?title) = "en" && lang(?dbpDescription) = "en" && contains(lcase(?title),?label)).
                                 FILTER(?exchange IN (yago:WikicatCompaniesListedOnNASDAQ,yago:WikicatCompaniesListedOnTheNewYorkStockExchange))
                                 VALUES ( ?key ?label ) 
                                     {{ {} }}
@@ -279,6 +278,56 @@ class Queryer:
                 return results
 
             results = locals()[self.query_rate.lower()]()
+            return results
+
+        def q_title_tradedas(symbols: str):
+            results = pd.DataFrame()
+            for i, s in enumerate(symbols):
+                s_members = s.split('|')
+                exchange, symbol = s_members[:-2]
+                exchange_symbol_string = ''.join(s_members[:-2])
+                title = s_members[3]
+                if title.endswith('co'):
+                    title = title.replace(' co', '')
+                if exchange == "NYSE":
+                    exchange = "New_York_Stock_Exchange"
+                #value = """( "{}" "{}") """.format(exchange_symbol_string, title)
+                print("Parsing symbol: {}, List: {}/{}".format(exchange_symbol_string, i+1, len(symbols)))
+
+                # query = """
+                # PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                # PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                # PREFIX dbpedia2: <http://dbpedia.org/property/>
+
+                # PREFIX dbpedia2: <http://dbpedia.org/property/>
+
+                # SELECT DISTINCT ?key ?item ?title ?traded ?dbpDescription
+                # WHERE {{
+                # ?item rdfs:label ?title.
+                # ?item rdfs:comment ?dbpDescription.
+                # ?item dbpedia2:tradedAs ?traded.
+                # FILTER(contains(str(lcase(?title)),?label) && lang(?dbpDescription) = "en")
+                # VALUES (?key ?label) {{ {} }}
+                # }}
+                # """.format(value)
+                query = """
+                PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                PREFIX dbpedia2: <http://dbpedia.org/property/>
+                PREFIX dct: <http://purl.org/dc/terms/>
+
+                SELECT DISTINCT ?key ?item ?title ?subject ?dbpDescription
+                                WHERE {{
+                                ?item rdfs:label ?title.
+                                ?item rdfs:comment ?dbpDescription.
+                                ?item dct:subject ?subject.
+                                ?title bif:contains "'{}'".
+                                FILTER(contains(str(?subject), "{}") && lang(?dbpDescription) = "en").
+                                VALUES (?key) {{ ("{}") }}
+                                }}
+                """.format(title, exchange, exchange_symbol_string)
+                results_df = self.run_query(query, 'dbpedia')
+                results = results.append(results_df, ignore_index = True)
+                time.sleep(0.15)
             return results
 
         symbols = []
@@ -341,39 +390,45 @@ class Queryer:
         def levenshtein_comparison(df):
             results = pd.DataFrame()
             tickers = pd.read_csv('./utils/secwiki_tickers.csv')
+            rows = {}
             for _, row in df.iterrows():
+                if row.key == "NASDAQ|FBMS": continue
                 match_col = tickers.loc[tickers['Ticker'] == row.symbol]
                 if not match_col.empty and not pd.isna(match_col.Name.values[0]):
                     lev = _levenshtein.ratio(row.title, match_col.Name.values[0])
-                    if lev > 0.7:
-                        results = results.append(row, ignore_index = True)
+                    if lev > 0.55:
+                        if row.key in rows and lev > rows[row.key][1]:
+                            rows[row.key] = [row, lev]
+                        else:
+                            rows[row.key] = [row,lev]
+                        print(row.dbpDescription[:50], row.key, row.title, colored("MATCH", "blue"), match_col.Name.values[0], match_col.Ticker.values[0], lev)
+            for _, v in rows.items():
+                results = results.append(v[0], ignore_index = True)
+            #print(results[['dbpDescription', 'exchange', 'key', 'symbol', 'title']])
+            sys.exit(0)
             return results
 
         self.results = pd.read_csv(self._rpath+'tag_cat_results_new.csv', sep='\t')
-        self.df = self.df.rename(columns={
-                        'symbol':'wdSymbol',
-                        'exchange':'wdExchange'
-                    })
+        # self.df = self.df.rename(columns={
+        #                 'symbol':'wdSymbol',
+        #                 'exchange':'wdExchange'
+        #             })
         self.df['key'] = self.df['key'].str.replace('NYSE','NYSE|')
         self.df['key'] = self.df['key'].str.replace('NASDAQ','NASDAQ|')
-        self.df['wdExchange'] = self.df['wdExchange'].str.replace('NewYorkStockExchange','NYSE')
+        # self.df['wdExchange'] = self.df['wdExchange'].str.replace('NewYorkStockExchange','NYSE')
         self.df['exchange'], self.df['symbol'] = self.df['key'].str.split('|', 1).str
-        #print(self.df)
-        self.df['keep'] = False
-        for i, row in self.df.iterrows():
-            self.df.at[i, 'keep'] = row.wdExchange.endswith(row.exchange)
-        self.df = self.df[self.df['keep']]
-        #duplicate_df = pd.concat(g for _, g in self.df.groupby(['symbol', 'exchange']) if len(g) > 1)
+        # self.df['keep'] = False
+        # for i, row in self.df.iterrows():
+        #     self.df.at[i, 'keep'] = row.wdExchange.endswith(row.exchange)
+        # self.df = self.df[self.df['keep']]
         self.df = levenshtein_comparison(self.df)
-        #self.df = self.df.drop_duplicates(subset=['key'])
         for i, row in self.results.iterrows():
-            #combined_key = row.exchange+row.symbol
             match_row = self.df.loc[self.df['symbol'] == row.symbol]
             
             if not match_row.empty and pd.isna(row.dbpEntity):
                 if 'wdEntity' in self.df.index and pd.isna(match_row.wdEntity.values[0]):
                     self.results.at[i, 'wdEntity'] = match_row.wdEntity.values[0]
-                self.results.at[i, 'dbpEntity'], self.results.at[i, 'dbpDescription'] = match_row.dbpEntity.values[0], match_row.dbpDescription.values[0]
+                self.results.at[i, 'dbpEntity'], self.results.at[i, 'dbpDescription'] = match_row.item.values[0], match_row.dbpDescription.values[0]
 
     def clean_results(self, df: pd.DataFrame, keyword: str):
         def levenshtein_comparison(results_df: pd.DataFrame):
@@ -431,8 +486,8 @@ class Queryer:
             print("Items with wikidata entries: {}".format(self.df[~self.df.wdEntity.isna()].shape[0]))
 
         def dbpedia():
-            self.not_found = self.df[self.df.wdEntity.isna() & self.df.dbpEntity.isna()]
             if self.results.empty:                
+                self.not_found = self.df[self.df.wdEntity.isna() & self.df.dbpEntity.isna()]
                 self.results = self.dbp_symbols_query_gen()
                 self.results.to_csv(self._rpath+'tag_cat_dbpedia_results.csv', sep='\t', index=False)
                 return
@@ -443,5 +498,5 @@ class Queryer:
             
 
 if __name__ == "__main__":
-    queryer = Queryer('dbpedia', 'q_categorised_title', 'individual')
+    queryer = Queryer('dbpedia', 'q_title_tradedas', 'individual')
     queryer.run()
