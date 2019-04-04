@@ -17,7 +17,7 @@ import codecs, difflib
 import math
 
 class Queryer:
-    def __init__(self, source='dbpedia', query_type='q_simple'):
+    def __init__(self, source='dbpedia', query_type='q_entity', query_rate='individual'):
         def wikidata():
             try:
                 self.results = pd.read_csv(self._rpath+'tag_cat_results.csv', sep='\t')
@@ -41,6 +41,7 @@ class Queryer:
         self._wpath = './data/txt/queryer/levenshtein/'
         self.source = source
         self.query_type = query_type
+        self.query_rate = query_rate
 
         locals()[self.source.lower()]()
 
@@ -99,45 +100,8 @@ class Queryer:
         return results_df
 
     def dbp_symbols_query_gen(self):
-        def q_categorised_entity(symbols: list):
-            results = pd.DataFrame()
-            symbols_split = [list(c) for c in mit.divide(512, symbols)]
-            for i, split in enumerate(symbols_split):
-                print("Parsing symbol list of size: {}, List: {}/{}".format(len(split), i+1, len(symbols_split)))
-                values = []
-                for s in split:
-                    s_members = s.split('|')
-                    exchange_symbol_string = ''.join(s_members[:-1])
-                    wd_sym_link = s_members[2]
-                    values.append("""( "{}" <{}>) """.format(exchange_symbol_string, wd_sym_link))
-                values = ''.join(values)
 
-                query = """
-                    PREFIX yago: <http://dbpedia.org/class/yago/>
-                    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-                    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-                    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-
-                    SELECT ?key ?title ?dbpDescription ?symbol ?exchange ?dbpEntity ?wdEntity
-                    WHERE {{
-                        ?dbpEntity rdfs:label ?title.
-                        ?dbpEntity rdfs:comment ?comment.
-                        OPTIONAL {{ ?dbpEntity dbp:symbol ?symbol . }}
-                        ?dbpEntity rdf:type ?exchange.
-                        ?dbpEntity owl:sameAs ?wdEntity.
-                        FILTER (lang(?title) = "en" && lang(?comment) = "en").
-                        FILTER(?exchange IN (yago:WikicatCompaniesListedOnNASDAQ,yago:WikicatCompaniesListedOnTheNewYorkStockExchange))
-                        VALUES ( ?key ?wdEntity ) 
-                            {{ {} }}
-                    }}
-                    """.format(values)
-
-                results_df = self.run_query(query, 'dbpedia')
-                results = results.append(results_df, ignore_index = True) 
-                time.sleep(1)
-            return results
-
-        def q_simple(symbols: list):
+        def q_entity(symbols: list):
             results = pd.DataFrame()
             for i, s in enumerate(symbols):
                 s_members = s.split('|')
@@ -164,50 +128,162 @@ class Queryer:
                     """.format(value)
                 results_df = self.run_query(query, 'dbpedia')
                 results = results.append(results_df, ignore_index = True) 
-                time.sleep(0.5)
+                time.sleep(0.2)
             return results
 
-        def q_categorised_title_only(symbols: list):
+        def q_categorised_entity(symbols: list):
             results = pd.DataFrame()
-            symbols_split = [list(c) for c in mit.divide(4, symbols)]
+            symbols_split = [list(c) for c in mit.divide(512, symbols)]
             for i, split in enumerate(symbols_split):
                 print("Parsing symbol list of size: {}, List: {}/{}".format(len(split), i+1, len(symbols_split)))
                 values = []
                 for s in split:
                     s_members = s.split('|')
                     exchange_symbol_string = ''.join(s_members[:-2])
-                    title = s_members[3]
-                    values.append("""( "{}" "{}") """.format(exchange_symbol_string, title))
+                    exchange = s_members[0]
+                    wd_sym_link = s_members[2]
+                    values.append("""( "{}" "{}" <{}>) """.format(exchange_symbol_string, exchange, wd_sym_link))
                 values = ''.join(values)
-                    
-                query = """
-                        PREFIX yago: <http://dbpedia.org/class/yago/>
-                        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-                        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-                        PREFIX owl: <http://www.w3.org/2002/07/owl#>
 
-                        SELECT DISTINCT ?key ?title ?dbpDescription ?symbol ?exchange ?dbpEntity ?wdEntity
-                        WHERE {{
-                            ?dbpEntity rdfs:label ?title.
-                            ?dbpEntity rdfs:comment ?dbpDescription.
-                            OPTIONAL {{ ?dbpEntity dbp:symbol ?symbol .}}
-                            ?dbpEntity owl:sameAs ?wdEntity.
-                            ?dbpEntity rdf:type ?exchange.
-                            FILTER (lang(?title) = "en" && lang(?dbpDescription) = "en" && contains(lcase(?title),?label) && strstarts(str(?wdEntity),"http://www.wikidata.org/entity/")).
-                            FILTER(?exchange IN (yago:WikicatCompaniesListedOnNASDAQ,yago:WikicatCompaniesListedOnTheNewYorkStockExchange))
-                            VALUES ( ?key ?label ) 
-                                {{ {} }}
-                        }}
-                        """.format(values)
+                #FILTER(?exchange IN (yago:WikicatCompaniesListedOnNASDAQ,yago:WikicatCompaniesListedOnTheNewYorkStockExchange))
+                query = """
+                    PREFIX yago: <http://dbpedia.org/class/yago/>
+                    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                    PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+                    SELECT ?key ?title ?dbpDescription ?symbol ?exchange ?dbpEntity ?wdEntity
+                    WHERE {{
+                        ?dbpEntity rdfs:label ?title.
+                        ?dbpEntity rdfs:comment ?comment.
+                        OPTIONAL {{ ?dbpEntity dbp:symbol ?symbol . }}
+                        ?dbpEntity rdf:type ?exchange.
+                        ?dbpEntity owl:sameAs ?wdEntity.
+                        FILTER (lang(?title) = "en" && lang(?comment) = "en").
+                        FILTER(STRENDS(STR(?exchange),?exch))
+                        VALUES ( ?key ?exch ?wdEntity ) 
+                            {{ {} }}
+                    }}
+                    """.format(values)
+
                 results_df = self.run_query(query, 'dbpedia')
                 results = results.append(results_df, ignore_index = True) 
-                time.sleep(0.5)
+                time.sleep(1)
             return results
 
+        def q_categorised_by_symbol(symbols: list):
+            results = pd.DataFrame()
+            for i, s in enumerate(symbols):
+                s_members = s.split('|')
+                exchange, symbol = s_members[:-2]
+                exchange_symbol_string = ''.join(s_members[:-2])
+                value = """( "{}" "{}" "{}") """.format(exchange_symbol_string, exchange, symbol)
+                print("Parsing symbol: {}, List: {}/{}".format(exchange_symbol_string, i+1, len(symbols)))
+            
+                query = """
+                            PREFIX yago: <http://dbpedia.org/class/yago/>
+                            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+                            SELECT DISTINCT ?key ?title ?dbpDescription ?symbol ?exchange ?dbpEntity
+                            WHERE {{
+                                ?dbpEntity rdfs:label ?title.
+                                ?dbpEntity rdfs:comment ?dbpDescription.
+                                ?dbpEntity dbp:symbol ?symbol .
+                                ?dbpEntity rdf:type ?exchange.
+                                FILTER (lang(?title) = "en" && lang(?dbpDescription) = "en" && contains(str(?symbol),?sym))
+                                FILTER(STRENDS(STR(?exchange),?exch))
+                                VALUES ( ?key ?exch ?sym  ) 
+                                    {{ {} }}
+                            }}
+                            """.format(value)
+                        
+                results_df = self.run_query(query, 'dbpedia')
+                results = results.append(results_df, ignore_index = True) 
+                time.sleep(0.2)
+            return results
+
+        def q_categorised_title(symbols: list):
+            def batch():
+                results = pd.DataFrame()
+                symbols_split = [list(c) for c in mit.divide(5, symbols)]
+                for i, split in enumerate(symbols_split):
+                    print("Parsing symbol list of size: {}, List: {}/{}".format(len(split), i+1, len(symbols_split)))
+                    values = []
+                    for s in split:
+                        s_members = s.split('|')
+                        exchange_symbol_string = ''.join(s_members[:-2])
+                        exchange = s_members[0]
+                        title = s_members[3]
+                        values.append("""( "{}" "{}") """.format(exchange_symbol_string, title))
+                    values = ''.join(values)
+                        
+                    query = """
+                            PREFIX yago: <http://dbpedia.org/class/yago/>
+                            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+                            SELECT DISTINCT ?key ?title ?dbpDescription ?symbol ?exchange ?dbpEntity ?wdEntity
+                            WHERE {{
+                                ?dbpEntity rdfs:label ?title.
+                                ?dbpEntity rdfs:comment ?dbpDescription.
+                                OPTIONAL {{ ?dbpEntity dbp:symbol ?symbol .}}
+                                ?dbpEntity owl:sameAs ?wdEntity.
+                                ?dbpEntity rdf:type ?exchange.
+                                FILTER (lang(?title) = "en" && lang(?dbpDescription) = "en" && contains(lcase(?title),?label) && strstarts(str(?wdEntity),"http://www.wikidata.org/entity/")).
+                                FILTER(?exchange IN (yago:WikicatCompaniesListedOnNASDAQ,yago:WikicatCompaniesListedOnTheNewYorkStockExchange))
+                                VALUES ( ?key ?label ) 
+                                    {{ {} }}
+                            }}
+                            """.format(values)
+                    results_df = self.run_query(query, 'dbpedia')
+                    results = results.append(results_df, ignore_index = True) 
+                    time.sleep(0.5)
+                return results
+
+            def individual():
+                results = pd.DataFrame()
+                for i, s in enumerate(symbols):
+                    s_members = s.split('|')
+                    exchange, symbol = s_members[:-2]
+                    exchange_symbol_string = ''.join(s_members[:-2])
+                    title = s_members[3]
+                    value = """( "{}" "{}") """.format(exchange_symbol_string, title)
+                    print("Parsing symbol: {}, List: {}/{}".format(exchange_symbol_string, i+1, len(symbols)))
+                    
+                    # ?dbpEntity owl:sameAs ?wdEntity.
+                    query = """
+                            PREFIX yago: <http://dbpedia.org/class/yago/>
+                            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+                            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+                            SELECT DISTINCT ?key ?title ?dbpDescription ?symbol ?exchange ?dbpEntity ?wdEntity
+                            WHERE {{
+                                ?dbpEntity rdfs:label ?title.
+                                ?dbpEntity rdfs:comment ?dbpDescription.
+                                OPTIONAL {{ ?dbpEntity dbp:symbol ?symbol .}}
+                                ?dbpEntity owl:sameAs ?wdEntity.
+                                ?dbpEntity rdf:type ?exchange.
+                                FILTER (lang(?title) = "en" && lang(?dbpDescription) = "en" && contains(lcase(?title),?label) && strstarts(str(?wdEntity),"http://www.wikidata.org/entity/")).
+                                FILTER(?exchange IN (yago:WikicatCompaniesListedOnNASDAQ,yago:WikicatCompaniesListedOnTheNewYorkStockExchange))
+                                VALUES ( ?key ?label ) 
+                                    {{ {} }}
+                            }}
+                            """.format(value)
+                    results_df = self.run_query(query, 'dbpedia')
+                    results = results.append(results_df, ignore_index = True)
+                    time.sleep(0.15)
+                return results
+
+            results = locals()[self.query_rate.lower()]()
+            return results
 
         symbols = []
         for _, row in self.not_found.iterrows():
-            symbol = row.exchange+'|'+row.symbol+'|'+row.wdEntity+'|'+row.title
+            symbol = row.exchange+'|'+row.symbol+'|'+str(row.wdEntity)+'|'+row.title
             symbols.append(symbol)
 
         results = locals()[self.query_type.lower()](symbols)
@@ -262,14 +338,40 @@ class Queryer:
         if 'title' in merge_on: self.df = self.df.drop_duplicates(subset=['symbol', 'exchange'])
 
     def dbpedia_cleaner(self):
-        self.results = pd.read_csv(self._rpath+'tag_cat_results_new.csv', sep='\t')
-        self.df = self.df.drop_duplicates(subset=['key'])
+        def levenshtein_comparison(df):
+            results = pd.DataFrame()
+            tickers = pd.read_csv('./utils/secwiki_tickers.csv')
+            for _, row in df.iterrows():
+                match_col = tickers.loc[tickers['Ticker'] == row.symbol]
+                if not match_col.empty and not pd.isna(match_col.Name.values[0]):
+                    lev = _levenshtein.ratio(row.title, match_col.Name.values[0])
+                    if lev > 0.7:
+                        results = results.append(row, ignore_index = True)
+            return results
 
+        self.results = pd.read_csv(self._rpath+'tag_cat_results_new.csv', sep='\t')
+        self.df = self.df.rename(columns={
+                        'symbol':'wdSymbol',
+                        'exchange':'wdExchange'
+                    })
+        self.df['key'] = self.df['key'].str.replace('NYSE','NYSE|')
+        self.df['key'] = self.df['key'].str.replace('NASDAQ','NASDAQ|')
+        self.df['wdExchange'] = self.df['wdExchange'].str.replace('NewYorkStockExchange','NYSE')
+        self.df['exchange'], self.df['symbol'] = self.df['key'].str.split('|', 1).str
+        #print(self.df)
+        self.df['keep'] = False
+        for i, row in self.df.iterrows():
+            self.df.at[i, 'keep'] = row.wdExchange.endswith(row.exchange)
+        self.df = self.df[self.df['keep']]
+        #duplicate_df = pd.concat(g for _, g in self.df.groupby(['symbol', 'exchange']) if len(g) > 1)
+        self.df = levenshtein_comparison(self.df)
+        #self.df = self.df.drop_duplicates(subset=['key'])
         for i, row in self.results.iterrows():
-            combined_key = row.exchange+row.symbol
-            match_row = self.df.loc[self.df['key'] == combined_key]
+            #combined_key = row.exchange+row.symbol
+            match_row = self.df.loc[self.df['symbol'] == row.symbol]
+            
             if not match_row.empty and pd.isna(row.dbpEntity):
-                if pd.isna(match_row.wdEntity.values[0]):
+                if 'wdEntity' in self.df.index and pd.isna(match_row.wdEntity.values[0]):
                     self.results.at[i, 'wdEntity'] = match_row.wdEntity.values[0]
                 self.results.at[i, 'dbpEntity'], self.results.at[i, 'dbpDescription'] = match_row.dbpEntity.values[0], match_row.dbpDescription.values[0]
 
@@ -329,14 +431,11 @@ class Queryer:
             print("Items with wikidata entries: {}".format(self.df[~self.df.wdEntity.isna()].shape[0]))
 
         def dbpedia():
-            self.not_found = self.df[~self.df.wdEntity.isna() & self.df.dbpEntity.isna()]
-            print(self.not_found)
-            sys.exit(0)
+            self.not_found = self.df[self.df.wdEntity.isna() & self.df.dbpEntity.isna()]
             if self.results.empty:                
                 self.results = self.dbp_symbols_query_gen()
                 self.results.to_csv(self._rpath+'tag_cat_dbpedia_results.csv', sep='\t', index=False)
-                self.df = self.results
-                sys.exit(0)
+                return
             self.dbpedia_cleaner()
             self.results.to_csv(self._rpath+'tag_cat_results_new.csv', sep='\t', index=False)
 
@@ -344,5 +443,5 @@ class Queryer:
             
 
 if __name__ == "__main__":
-    queryer = Queryer('dbpedia', 'q_categorised_title_only')
+    queryer = Queryer('dbpedia', 'q_categorised_title', 'individual')
     queryer.run()
