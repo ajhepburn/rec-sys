@@ -15,3 +15,6 @@ ds.py
 
 parse_libfm.py
 model_kaggle_car.py
+
+model_tagcat_bilstm.py
+model_tagcat_textcnn.py
