@@ -1,15 +1,21 @@
 from datetime import datetime
 
-from scipy.sparse import csr_matrix, coo_matrix
+from scipy.sparse import csr_matrix, coo_matrix, lil_matrix
 from lightfm.data import Dataset
 from lightfm.cross_validation import random_train_test_split
 from lightfm.evaluation import auc_score, precision_at_k, recall_at_k, reciprocal_rank
 from lightfm import LightFM
 from collections import Counter
 import numpy as np
+import implicit
+
+from implicit.evaluation import train_test_split, mean_average_precision_at_k
 
 import logging
 import sys
+import random
+import time
+import os
 
 import pandas as pd
 
@@ -48,7 +54,7 @@ class BaselineModels:
 
 class LightFMLib(BaselineModels):
     def __init__(self):
-        super()
+        super().__init__()
 
     def build_id_mappings(self, df_interactions: pd.DataFrame, df_user_features: pd.DataFrame, df_item_features: pd.DataFrame) -> Dataset:
         """Builds internal indice mapping for user-item interactions and encodes item features.
@@ -349,29 +355,43 @@ class LightFMLib(BaselineModels):
     def run(self):
         pass
 
-class ImplicitLib(BaselineModels):
-    def __init__(self):
+class Implicit(BaselineModels):
+    def __init__(self, model_type):
         super().__init__()
+        os.environ['OPENBLAS_NUM_THREADS'] = '1'
+        os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+        self.df = self.df[['user_id', 'item_id']]
+        self.df = self.df.groupby(['user_id', 'item_id']).size().reset_index(name='weight')
+        a = self.df.groupby('user_id')['weight'].transform('sum')
+        self.df['weight'] = self.df['weight'].div(a)
 
+        users = list(np.sort(self.df['user_id'].unique())) 
+        items = list(self.df['item_id'].unique())
+        weights = list(self.df['weight']) 
 
-class ALS(ImplicitLib):
-    def __init__(self):
-        super().__init__()
-        self.model_name = 'als'
+        rows = self.df['user_id'].astype('category', categories = users).cat.codes
+        cols = self.df['item_id'].astype('category', categories = items).cat.codes 
+
+        self.sparse_repr = csr_matrix((weights, (rows, cols)), shape=(len(users), len(items)))
+        self.model_type = model_type
+
+    def fit(self):
+        model = implicit.als.AlternatingLeastSquares(factors=50) if self.model_type is 'als' else implicit.approximate_als.NMSLibAlternatingLeastSquares()
+        model.fit(self.sparse_repr)
+        return model
+
+    def evaluate(self, model):
+        train, test = train_test_split(self.sparse_repr, 0.8)
+        mapk = mean_average_precision_at_k(model, train, test)
+        print("MAP@10: {}".format(mapk))
 
     def run(self):
-        pass
-
-class ApproximateALS(ImplicitLib):
-    def __init__(self):
-        super()
-    
-    def run(self):
-        pass
+        model = self.fit()
+        self.evaluate(model)
 
 class LFMCF(LightFMLib):
     def __init__(self, loss):
-        super()
+        super().__init__()
         self.model_name = loss+'_cf'
 
     def cf_model(self, train: coo_matrix, params: tuple) -> LightFM:
@@ -418,7 +438,7 @@ class LFMCF(LightFMLib):
 
 class LFMHybrid(LightFMLib):
     def __init__(self, loss):
-        super()
+        super().__init__()
         self.model_name = loss+'_hybrid'
 
     def hybrid_model(self, params: tuple, train: coo_matrix, user_features: csr_matrix=None, item_features: csr_matrix=None) -> LightFM:
@@ -473,5 +493,5 @@ class LFMHybrid(LightFMLib):
         hybrid_model = self.hybrid_model(params, train, user_features, item_features)
         self.evaluate_model(model=hybrid_model, model_name='h', eval_metrics=['auc', 'precrec', 'mrr'], sets=(train, test), NUM_THREADS=NUM_THREADS, user_features=user_features, item_features=item_features, k=10)
 
-als = ALS()
-als.run()
+imp = Implicit('als')
+imp.run()

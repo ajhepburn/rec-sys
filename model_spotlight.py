@@ -227,7 +227,7 @@ class SpotlightModel:
         cashtag_ids = df_interactions['item_tag_ids'].values.astype(int)
         timestamps, weights = df_timestamps.values, np.array(df_weights['count'].values)
         normalise = lambda v: v / np.sqrt(np.sum(v**2))
-        normalised_weights = normalise(weights)
+        normalised_weights = normalise(weights) # THIS IS NOT CORRECT, NORMALISES BY ALL INSTEAD OF BY ID
         interactions = Interactions(
             user_ids=user_ids,
             item_ids=cashtag_ids,
