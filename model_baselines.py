@@ -1,5 +1,13 @@
 from datetime import datetime
 
+from scipy.sparse import csr_matrix, coo_matrix
+from lightfm.data import Dataset
+from lightfm.cross_validation import random_train_test_split
+from lightfm.evaluation import auc_score, precision_at_k, recall_at_k, reciprocal_rank
+from lightfm import LightFM
+from collections import Counter
+import numpy as np
+
 import logging
 import sys
 
@@ -10,6 +18,7 @@ class BaselineModels:
         self.logpath = './log/models/'
         self.rpath = './data/csv/cashtags_clean.csv'
         self.mpath = './models/'
+        self.df = self.csv_to_df()
 
     def logger(self, model_name):
         """Sets the logger configuration to report to both std.out and to log to ./log/models/<MODEL_NAME>/
@@ -38,6 +47,9 @@ class BaselineModels:
         return df
 
 class LightFMLib(BaselineModels):
+    def __init__(self):
+        super()
+
     def build_id_mappings(self, df_interactions: pd.DataFrame, df_user_features: pd.DataFrame, df_item_features: pd.DataFrame) -> Dataset:
         """Builds internal indice mapping for user-item interactions and encodes item features.
 
@@ -338,11 +350,13 @@ class LightFMLib(BaselineModels):
         pass
 
 class ImplicitLib(BaselineModels):
-    def run(self):
-        pass
+    def __init__(self):
+        super().__init__()
+
 
 class ALS(ImplicitLib):
     def __init__(self):
+        super().__init__()
         self.model_name = 'als'
 
     def run(self):
@@ -350,13 +364,14 @@ class ALS(ImplicitLib):
 
 class ApproximateALS(ImplicitLib):
     def __init__(self):
-        pass
+        super()
     
     def run(self):
         pass
 
 class LFMCF(LightFMLib):
     def __init__(self, loss):
+        super()
         self.model_name = loss+'_cf'
 
     def cf_model(self, train: coo_matrix, params: tuple) -> LightFM:
@@ -403,6 +418,7 @@ class LFMCF(LightFMLib):
 
 class LFMHybrid(LightFMLib):
     def __init__(self, loss):
+        super()
         self.model_name = loss+'_hybrid'
 
     def hybrid_model(self, params: tuple, train: coo_matrix, user_features: csr_matrix=None, item_features: csr_matrix=None) -> LightFM:
@@ -456,3 +472,6 @@ class LFMHybrid(LightFMLib):
 
         hybrid_model = self.hybrid_model(params, train, user_features, item_features)
         self.evaluate_model(model=hybrid_model, model_name='h', eval_metrics=['auc', 'precrec', 'mrr'], sets=(train, test), NUM_THREADS=NUM_THREADS, user_features=user_features, item_features=item_features, k=10)
+
+als = ALS()
+als.run()
