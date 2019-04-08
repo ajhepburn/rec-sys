@@ -359,7 +359,6 @@ class Implicit(BaselineModels):
     def __init__(self, model_type):
         super().__init__()
         os.environ['OPENBLAS_NUM_THREADS'] = '1'
-        os.environ['CUDA_VISIBLE_DEVICES'] = '0'
         self.df = self.df[['user_id', 'item_id']]
         self.df = self.df.groupby(['user_id', 'item_id']).size().reset_index(name='weight')
         a = self.df.groupby('user_id')['weight'].transform('sum')
