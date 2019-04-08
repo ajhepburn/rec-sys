@@ -1,26 +1,18 @@
-import pandas as pd
-from scipy.sparse import csr_matrix, coo_matrix
-from lightfm.data import Dataset
-from lightfm.cross_validation import random_train_test_split
-from lightfm.evaluation import auc_score, precision_at_k, recall_at_k, reciprocal_rank
-from lightfm import LightFM
 from datetime import datetime
-from collections import Counter
-import numpy as np
-from gensim.models.doc2vec import Doc2Vec, TaggedDocument
 
+import logging
+import sys
 
-import sys, regex, logging
+import pandas as pd
 
-class HybridBaselineModel:
-    def __init__(self, model_details):
-        self.model_details = model_details
-        self.logpath = './log/models/hybridbaselinemodel/'
-        self.rpath = './data/csv/metadata_clean.csv'
+class BaselineModels:
+    def __init__(self):
+        self.logpath = './log/models/'
+        self.rpath = './data/csv/cashtags_clean.csv'
         self.mpath = './models/'
 
-    def logger(self):
-        """Sets the logger configuration to report to both std.out and to log to ./log/io/csv/cleaner
+    def logger(self, model_name):
+        """Sets the logger configuration to report to both std.out and to log to ./log/models/<MODEL_NAME>/
         
         Also sets the formatting instructions for the log file, prints Time, Current Thread, Logging Type, Message.
 
@@ -29,7 +21,7 @@ class HybridBaselineModel:
                 level=logging.INFO,
                 format="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s",
                 handlers=[
-                    logging.FileHandler("{0}/{1}_log ({2}).log".format(self.logpath, str(datetime.now())[:-7],'hybrid_baseline_'+self.model_details)),
+                    logging.FileHandler("{0}/{1} ({2}).log".format(self.logpath+'/baseline/'+model_name+'/', str(datetime.now())[:-7], model_name)),
                     logging.StreamHandler(sys.stdout)
                 ])
 
@@ -43,9 +35,9 @@ class HybridBaselineModel:
         """
 
         df = pd.read_csv(self.rpath, sep='\t')
-        df_user_features, df_item_features, df_interactions = df[['user_id', 'user_location']], df[['item_id', 'item_timestamp', 'item_body','item_titles', 'item_cashtags', 'item_industries', 'item_sectors']], df[['user_id', 'item_id']]
-        return (df_user_features, df_item_features, df_interactions)
+        return df
 
+class LightFMLib(BaselineModels):
     def build_id_mappings(self, df_interactions: pd.DataFrame, df_user_features: pd.DataFrame, df_item_features: pd.DataFrame) -> Dataset:
         """Builds internal indice mapping for user-item interactions and encodes item features.
 
@@ -122,7 +114,6 @@ class HybridBaselineModel:
         return (interactions, weights)
 
     def build_user_features(self, dataset: Dataset, df_user_features: pd.DataFrame) -> csr_matrix:
-        # df = df_user_features.groupby('user_id')['user_location'].apply('|'.join).reset_index()
         def gen_rows(df):
             """Yields 
 
@@ -148,26 +139,9 @@ class HybridBaselineModel:
                 d = row._asdict()
                 user_locations = list(map('LOC:{0}'.format, d['user_location'].split('|') if '|' in d['user_location'] else [d['user_location']]))
                 yield [d['user_id'], user_locations]
-                # loc_weights = Counter(user_locations)
-
-                # for k, v in loc_weights.items():
-                #     yield [d['user_id'], {k:v}]
 
         user_features = dataset.build_user_features(gen_rows(df_user_features))
         return user_features
-
-    # def build_item_embeddings_matrix(self, df_item_features: pd.DataFrame) -> np.float32:
-    #     # def print_vector_by_prefix(model, prefix_string):
-    #     #     item_vec = [model.docvecs[tag] for tag in model.docvecs.offset2doctag if tag.startswith(prefix_string)]
-    #     #     return user_docs
-    #     item_embeddings = np.ndarray((1, df_item_features.shape[0])).astype(np.float32)
-    #     d2v_model = Doc2Vec.load(self.mpath+'doc2vec/'+'2019-03-04 20:56:12.model')
-    #     # print(print_vector_by_prefix(d2v_model, '70630261'))
-    #     # for el in range(0, df_item_features.shape[0]):
-    #     for i, element in range(0, df_item_features.shape[0]):
-    #         # item_embeddings[Item][element] = ItemVectorElements[element]
-    #     print(type(d2v_model.docvecs['70630259']))
-    #     pass
 
     def build_item_features(self, dataset: Dataset, df_item_features: pd.DataFrame) -> csr_matrix:
         """Binds item features to item IDs, provided they exist in the fitted model.
@@ -239,62 +213,6 @@ class HybridBaselineModel:
 
         train, test = random_train_test_split(interactions)
         return train, test
-
-    def cf_model_pure(self, train: coo_matrix, params: tuple) -> LightFM:
-        """Trains a pure collaborative filtering model.
-
-        Args:
-            train (scipy.sparse.coo_matrix): Training set as a COO matrix.
-            params (tuple): A number of hyperparameters for the model, namely NUM_THREADS, NUM_COMPONENTS, NUM_EPOCHS, ITEM_ALPHA.
-
-        Returns:
-            lightfm.LightFM: A lightFM model.
-
-        """
-
-        logger = logging.getLogger()
-        NUM_THREADS, NUM_COMPONENTS, NUM_EPOCHS, ITEM_ALPHA = params
-        model = LightFM(loss='warp',
-                        item_alpha=ITEM_ALPHA,
-                    no_components=NUM_COMPONENTS)
-
-        # Run 3 epochs and time it.
-        logger.info('Begin fitting collaborative filtering model...')
-        model = model.fit(train, epochs=NUM_EPOCHS, num_threads=NUM_THREADS)
-        return model
-
-    def hybrid_model(self, params: tuple, train: coo_matrix, user_features: csr_matrix=None, item_features: csr_matrix=None) -> LightFM:
-        """Trains a hybrid collaborative filtering/content model
-
-        Adds user/item features to model to enrich training data.
-
-        Args:
-            params (tuple): A number of hyperparameters for the model, namely NUM_THREADS, NUM_COMPONENTS, NUM_EPOCHS, ITEM_ALPHA.
-            train (scipy.sparse.coo_matrix): Training set as a COO matrix.
-            user_features (scipy.sparse.csr_matrix) : Matrix of userfeatures.
-            item_features (scipy.sparse.csr_matrix) : Matrix of item features.
-
-        Returns:
-            lightfm.LightFM: A lightFM model.
-
-        """
-
-        logger = logging.getLogger()
-        NUM_THREADS, NUM_COMPONENTS, NUM_EPOCHS, ITEM_ALPHA = params
-        # Define a new model instance
-        model = LightFM(loss='warp',
-                        item_alpha=ITEM_ALPHA,
-                        no_components=NUM_COMPONENTS)
-
-        # Fit the hybrid model. Note that this time, we pass
-        # in the item features matrix.
-        logger.info('Begin fitting hybrid model...')
-        model = model.fit(train,
-                        item_features=item_features,
-                        user_features=user_features,
-                        epochs=NUM_EPOCHS,
-                        num_threads=NUM_THREADS)
-        return model
 
     def evaluate_model(self, model: LightFM, model_name: str, eval_metrics: list, sets: tuple, NUM_THREADS: str, user_features: csr_matrix=None, item_features: csr_matrix=None, k: int=None):
         """Evaluates models on a number of metrics
@@ -417,32 +335,124 @@ class HybridBaselineModel:
             locals()[metric]()
 
     def run(self):
-        self.logger()
+        pass
+
+class ImplicitLib(BaselineModels):
+    def run(self):
+        pass
+
+class ALS(ImplicitLib):
+    def __init__(self):
+        self.model_name = 'als'
+
+    def run(self):
+        pass
+
+class ApproximateALS(ImplicitLib):
+    def __init__(self):
+        pass
+    
+    def run(self):
+        pass
+
+class LFMCF(LightFMLib):
+    def __init__(self, loss):
+        self.model_name = loss+'_cf'
+
+    def cf_model(self, train: coo_matrix, params: tuple) -> LightFM:
+        """Trains a pure collaborative filtering model.
+
+        Args:
+            train (scipy.sparse.coo_matrix): Training set as a COO matrix.
+            params (tuple): A number of hyperparameters for the model, namely NUM_THREADS, NUM_COMPONENTS, NUM_EPOCHS, ITEM_ALPHA.
+
+        Returns:
+            lightfm.LightFM: A lightFM model.
+
+        """
+
+        logger = logging.getLogger()
+        NUM_THREADS, NUM_COMPONENTS, NUM_EPOCHS, ITEM_ALPHA = params
+        model = LightFM(loss='warp',
+                        item_alpha=ITEM_ALPHA,
+                    no_components=NUM_COMPONENTS)
+
+        # Run 3 epochs and time it.
+        logger.info('Begin fitting collaborative filtering model...')
+        model = model.fit(train, epochs=NUM_EPOCHS, num_threads=NUM_THREADS)
+        return model
+
+    def run(self):
+        self.logger(self.model_name)
         logger = logging.getLogger()
         params = (NUM_THREADS, _, _, _) = (4,30,3,1e-16)
 
-        df_user_features, df_item_features, df_interactions = self.csv_to_df()
+        df = self.csv_to_df()
+        df_user_features, df_item_features, df_interactions = df[['user_id', 'user_location']], df[['item_id', 'item_timestamp', 'item_body','item_titles', 'item_cashtags', 'item_industries', 'item_sectors']], df[['user_id', 'item_id']]
+
         dataset, user_locations, item_sectors, item_industries, item_cashtags = self.build_id_mappings(df_interactions, df_user_features, df_item_features)
-        
         interactions, _ = self.build_interactions_matrix(dataset, df_interactions)
-
-        user_features = self.build_user_features(dataset, df_user_features)
-        item_features = self.build_item_features(dataset, df_item_features)
-
         train, test = self.cross_validate_interactions(interactions)
 
         logger.info('The dataset has %s users and %s items with %s interactions in the test and %s interactions in the training set.' % (train.shape[0], train.shape[1], test.getnnz(), train.getnnz()))
 
-        cf_model = self.cf_model_pure(train, params)
+        cf_model = self.cf_model(train, params)
         self.evaluate_model(model=cf_model, model_name='cf', eval_metrics=['auc'], sets=(train, test), NUM_THREADS=NUM_THREADS)
 
         logger.info('There are {0} distinct user locations, {1} distinct sectors, {2} distinct industries and {3} distinct cashtags.'.format(len(user_locations), len(item_sectors), len(item_industries), len(item_cashtags)))
 
+class LFMHybrid(LightFMLib):
+    def __init__(self, loss):
+        self.model_name = loss+'_hybrid'
+
+    def hybrid_model(self, params: tuple, train: coo_matrix, user_features: csr_matrix=None, item_features: csr_matrix=None) -> LightFM:
+        """Trains a hybrid collaborative filtering/content model
+
+        Adds user/item features to model to enrich training data.
+
+        Args:
+            params (tuple): A number of hyperparameters for the model, namely NUM_THREADS, NUM_COMPONENTS, NUM_EPOCHS, ITEM_ALPHA.
+            train (scipy.sparse.coo_matrix): Training set as a COO matrix.
+            user_features (scipy.sparse.csr_matrix) : Matrix of userfeatures.
+            item_features (scipy.sparse.csr_matrix) : Matrix of item features.
+
+        Returns:
+            lightfm.LightFM: A lightFM model.
+
+        """
+
+        logger = logging.getLogger()
+        NUM_THREADS, NUM_COMPONENTS, NUM_EPOCHS, ITEM_ALPHA = params
+        # Define a new model instance
+        model = LightFM(loss='warp',
+                        item_alpha=ITEM_ALPHA,
+                        no_components=NUM_COMPONENTS)
+
+        # Fit the hybrid model. Note that this time, we pass
+        # in the item features matrix.
+        logger.info('Begin fitting hybrid model...')
+        model = model.fit(train,
+                        item_features=item_features,
+                        user_features=user_features,
+                        epochs=NUM_EPOCHS,
+                        num_threads=NUM_THREADS)
+        return model
+
+    def run(self):
+        self.logger(self.model_name)
+        logger = logging.getLogger()
+        params = (NUM_THREADS, _, _, _) = (4,30,3,1e-16)
+
+        df = self.csv_to_df()
+        df_user_features, df_item_features, df_interactions = df[['user_id', 'user_location']], df[['item_id', 'item_timestamp', 'item_body','item_titles', 'item_cashtags', 'item_industries', 'item_sectors']], df[['user_id', 'item_id']]
+        
+        dataset, user_locations, item_sectors, item_industries, item_cashtags = self.build_id_mappings(df_interactions, df_user_features, df_item_features)
+        interactions, _ = self.build_interactions_matrix(dataset, df_interactions)
+        user_features = self.build_user_features(dataset, df_user_features)
+        item_features = self.build_item_features(dataset, df_item_features)
+        train, test = self.cross_validate_interactions(interactions)
+
+        logger.info('The dataset has %s users and %s items with %s interactions in the test and %s interactions in the training set.' % (train.shape[0], train.shape[1], test.getnnz(), train.getnnz()))
+
         hybrid_model = self.hybrid_model(params, train, user_features, item_features)
         self.evaluate_model(model=hybrid_model, model_name='h', eval_metrics=['auc', 'precrec', 'mrr'], sets=(train, test), NUM_THREADS=NUM_THREADS, user_features=user_features, item_features=item_features, k=10)
-
-
-
-if __name__=="__main__":
-    bm = HybridBaselineModel('u_l_i_embd')
-    bm.run()

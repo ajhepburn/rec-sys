@@ -405,6 +405,5 @@ class HybridBaselineCashtagRecommender:
         self.evaluate_model(model=hybrid_model, model_name='h', eval_metrics=['auc', 'precrec', 'mrr'], sets=(train, test), NUM_THREADS=NUM_THREADS, user_features=user_features, item_features=item_features, k=10)
         
 
-if __name__ == "__main__":
-    cashrec = HybridBaselineCashtagRecommender()
-    cashrec.run()
+cashrec = HybridBaselineCashtagRecommender()
+cashrec.run()
