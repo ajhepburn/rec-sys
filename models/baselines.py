@@ -341,7 +341,7 @@ class LFMRun(LightFMLib):
         self.loss = None
         self.model_name = 'lfm'
 
-    def cf_model(self, train: coo_matrix, params: tuple) -> LightFM:
+    def cf_model(self, train: coo_matrix, params: tuple, item_features: csr_matrix=None) -> LightFM:
         """Trains a pure collaborative filtering model.
 
         Args:
@@ -355,12 +355,19 @@ class LFMRun(LightFMLib):
 
         logger = logging.getLogger()
         NUM_THREADS, NUM_COMPONENTS, NUM_EPOCHS, ITEM_ALPHA = params
-        model = LightFM(loss=self.loss,
-                        item_alpha=ITEM_ALPHA,
-                    no_components=NUM_COMPONENTS)
+        model = LightFM(
+            loss=self.loss,
+            item_alpha=ITEM_ALPHA,
+            no_components=NUM_COMPONENTS,
+        )
 
         logger.info('Begin fitting collaborative filtering model @ Epochs: {}'.format(NUM_EPOCHS))
-        model = model.fit(train, epochs=NUM_EPOCHS, num_threads=NUM_THREADS)
+        model = model.fit(
+            interactions=train, 
+            item_features=item_features,
+            epochs=NUM_EPOCHS, 
+            num_threads=NUM_THREADS
+        )
         return model
 
     def run(self, filtering, loss, k):
@@ -380,12 +387,26 @@ class LFMRun(LightFMLib):
 
         dataset = self.build_id_mappings()
         interactions, _ = self.build_interactions_matrix(dataset)
+        item_features = self.build_item_features(dataset) if self.filter is 'hybrid' else None
         train, test = self.cross_validate_interactions(interactions)
 
         logger.info('The dataset has %s users and %s items with %s interactions in the test and %s interactions in the training set.' % (train.shape[0], train.shape[1], test.getnnz(), train.getnnz()))
 
-        cf_model = self.cf_model(train, params)
-        self.evaluate_model(model=cf_model, model_name=self.filter, eval_metrics=['precrec'], sets=(train, test), NUM_THREADS=NUM_THREADS, k=k)
+        cf_model = self.cf_model(
+            train=train, 
+            params=params,
+            item_features=item_features
+        )
+
+        self.evaluate_model(
+            model=cf_model, 
+            model_name=self.filter, 
+            eval_metrics=['precrec'], 
+            sets=(train, test), 
+            NUM_THREADS=NUM_THREADS, 
+            k=k,
+            item_features=item_features
+        )
 
         self.model_name = 'lfm'
 
