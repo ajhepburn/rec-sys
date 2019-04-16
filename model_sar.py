@@ -10,18 +10,18 @@ import logging
 import sys
 import time
 
-TOP_K = 10
+TOP_K = 5
 COLUMNS = {
     'col_user': 'user_id',
     'col_item': 'item_id',
     'col_rating': 'weight',
-    'col_timestamp': 'item_timestamp'
+    'col_timestamp': 'timestamp'
 }
 
 class SmartAdaptiveRec:
     def __init__(self):
         self._logpath = './log/models/smartadaptiverec/'
-        self._rpath = './data/csv/cashtags_clean.csv'
+        self._rpath = './data/csv/dataparser/03_bot_cleaned.csv'
 
     def logger(self):
             """Sets logger config to both std.out and log ./log/models/smartadaptiverec/
@@ -52,29 +52,29 @@ class SmartAdaptiveRec:
         """
 
         df = pd.read_csv(self._rpath, sep='\t')
-        df['count'] = df.groupby(['user_id', 'item_tag_ids']).user_id.transform('size')
+        df['count'] = df.groupby(['user_id', 'tag_id']).user_id.transform('size')
         df = df[df['count'] < months*100]
-        df_weights = df[['user_id', 'item_tag_ids', 'count']].drop_duplicates(
-            subset=['user_id', 'item_tag_ids']
+        df_weights = df[['user_id', 'tag_id', 'count']].drop_duplicates(
+            subset=['user_id', 'tag_id']
         )
 
         df = df.merge(
-            df.groupby(['user_id', 'item_tag_ids']).item_timestamp.agg(list).reset_index(),
-            on=['user_id', 'item_tag_ids'],
+            df.groupby(['user_id', 'tag_id']).timestamp.agg(list).reset_index(),
+            on=['user_id', 'tag_id'],
             how='left',
             suffixes=['_1', '']
-        ).drop('item_timestamp_1', axis=1)
+        ).drop('timestamp_1', axis=1)
 
         df = df.groupby(
-            ['user_id', 'item_tag_ids']
-        ).item_timestamp.agg(list).reset_index()
+            ['user_id', 'tag_id']
+        ).timestamp.agg(list).reset_index()
 
         listjoin = lambda x: [j for i in x for j in i]
-        df['item_timestamp'] = df['item_timestamp'].apply(listjoin)
-        df['item_timestamp'] = df['item_timestamp'].apply(lambda x: x[0])
-        df3 = pd.merge(df, df_weights, on=["user_id", "item_tag_ids"], how="left")        
+        df['timestamp'] = df['timestamp'].apply(listjoin)
+        df['timestamp'] = df['timestamp'].apply(lambda x: x[0])
+        df3 = pd.merge(df, df_weights, on=["user_id", "tag_id"], how="left")        
         cols = list(df3.columns)
-        a, b = cols.index('item_timestamp'), cols.index('count')
+        a, b = cols.index('timestamp'), cols.index('count')
         cols[b], cols[a] = cols[a], cols[b]
         df = df3[cols]
 
@@ -82,7 +82,7 @@ class SmartAdaptiveRec:
         normalise = lambda v: v / np.sqrt(np.sum(v**2))
         normalised_weights = normalise(weights)
         df['count'] = normalised_weights
-        df = df.rename(columns={'item_tag_ids':'item_id','count':'weight'})
+        df = df.rename(columns={'tag_id':'item_id', 'count':'weight'})
         return df
 
     def fit_sar_model(self, train: pd.DataFrame) -> SARSingleNode:

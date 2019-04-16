@@ -19,7 +19,7 @@ from reco_utils.dataset.python_splitters import python_random_split, python_stra
 import reco_utils.evaluation.python_evaluation
 
 # Recommend top k items
-TOP_K = 10
+TOP_K = 5
 RANKING_METRICS = ['map_at_k', 'ndcg_at_k', 'precision_at_k', 'recall_at_k']
 RATING_METRICS = ['rmse', 'mae', 'rsquared', 'exp_var']
 EVALUATE_WHILE_TRAINING = True
@@ -58,19 +58,19 @@ NUM_CPUS = os.cpu_count()
 class WideDeepModel:
     def __init__(self):
         self._logpath = './log/models/widedeep/'
-        self._rpath = './data/csv/cashtags_clean.csv'
+        self._rpath = './data/csv/dataparser/03_bot_cleaned.csv'
         self._modeldir = './models/widedeep/'
 
     def csv_to_df(self, months=3):
         df = pd.read_csv(self._rpath, sep='\t')
         
         df['count'] = df.groupby(
-            ['user_id', 'item_tag_ids']
+            ['user_id', 'tag_id']
         ).user_id.transform('size')
-        df = df[df['count'] < months*100]
+        # df = df[df['count'] < months*100]
 
-        df_weights = df[['user_id', 'item_tag_ids', 'count']].drop_duplicates(
-            subset=['user_id', 'item_tag_ids']
+        df_weights = df[['user_id', 'tag_id', 'count']].drop_duplicates(
+            subset=['user_id', 'tag_id']
         )
         
         df_weights = df_weights.assign(target=df_weights['count'].div(
@@ -78,22 +78,22 @@ class WideDeepModel:
         ))
         df_weights = df_weights.drop('count', axis=1)
         
-        df_sector_industry = df[['user_id', 'item_tag_ids', 'item_sectors']]
-        df_sector_industry = df_sector_industry[['user_id', 'item_tag_ids', 'item_sectors']].drop_duplicates(
-            subset=['user_id', 'item_tag_ids']
+        df_sector_industry = df[['user_id', 'tag_id', 'tag_sector']]
+        df_sector_industry = df_sector_industry[['user_id', 'tag_id', 'tag_sector']].drop_duplicates(
+            subset=['user_id', 'tag_id']
         )
 
-        df2 = pd.merge(df_weights, df_sector_industry, on=["user_id", "item_tag_ids"], how="left")
-        df2 = df2.rename(columns={'item_tag_ids':'item_id'}) 
+        df2 = pd.merge(df_weights, df_sector_industry, on=["user_id", "tag_id"], how="left")
+        df2 = df2.rename(columns={'tag_id':'item_id'}) 
 
-        # df2['item_features_str'] = df2[['item_sectors', 'item_industries']].apply(lambda x: '|'.join(x), axis=1)
-        df = df2[['user_id', 'item_id', 'target','item_sectors']]
+        # df2['item_features_str'] = df2[['tag_sector', 'item_industries']].apply(lambda x: '|'.join(x), axis=1)
+        df = df2[['user_id', 'item_id', 'target', 'tag_sector']]
 
         features_encoder = sklearn.preprocessing.MultiLabelBinarizer()
         df[ITEM_FEAT_COL] = features_encoder.fit_transform(
-            df['item_sectors'].apply(lambda s: [s])
+            df['tag_sector'].apply(lambda s: [s])
         ).tolist()
-        df = df.drop('item_sectors', axis=1)
+        df = df.drop('tag_sector', axis=1)
         return df
 
     def fit_wide_deep_model(self, data_splits: tuple, user_item_info: tuple):

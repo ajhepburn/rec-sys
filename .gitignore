@@ -18,3 +18,5 @@ model_kaggle_car.py
 
 model_tagcat_bilstm.py
 model_tagcat_textcnn.py
+
+best_model.h5
