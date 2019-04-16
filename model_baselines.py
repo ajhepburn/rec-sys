@@ -51,55 +51,6 @@ class BaselineModels:
                     logging.StreamHandler(sys.stdout)
                 ])
 
-    # def csv_to_df(self) -> tuple:
-    #     """Reads in CSV file declared in __init__ (self.rpath) and converts it to a number of Pandas DataFrames.
-            
-    #     Returns:
-    #         tuple: Returns tuple of Pandas DataFrames; user features, item features and 
-    #             interactions between items.
-
-    #     """
-
-    #     df = pd.read_csv(self.rpath, sep='\t')
-    #     return df
-
-    # def csv_to_df(self) -> tuple:
-    #     """Reads in CSV file, converts it to a number of Pandas DataFrames.
-
-    #     Returns:
-    #         tuple: Returns tuple of Pandas DataFrames; user features, item features and
-    #             interactions between items.
-
-    #     """
-
-    #     df = pd.read_csv(self.rpath, sep='\t')
-    #     df['count'] = df.groupby(['user_id', 'tag_id']).user_id.transform('size')
-    #     # df = df[df['count'] < months*100]
-    #     df_weights = df[['user_id', 'tag_id', 'count']].drop_duplicates(
-    #         subset=['user_id', 'tag_id']
-    #     )
-    #     df_weights['count'] = df_weights.groupby('user_id')['count'].transform(lambda x: x/x.sum())
-
-    #     df = df.merge(
-    #         df.groupby(['user_id', 'tag_id']).timestamp.agg(list).reset_index(),
-    #         on=['user_id', 'tag_id'],
-    #         how='left',
-    #         suffixes=['_1', '']
-    #     ).drop('timestamp_1', axis=1)
-
-    #     df = df.groupby(
-    #         ['user_id', 'tag_id']
-    #     ).timestamp.agg(list).reset_index()
-
-    #     listjoin = lambda x: [j for i in x for j in i]
-    #     df['timestamp'] = df['timestamp'].apply(listjoin)
-    #     df_interactions, df_timestamps = df[['user_id', 'tag_id']], df['timestamp']
-    #     return (
-    #         df_interactions,
-    #         df_timestamps,
-    #         df_weights
-    #     )
-
     def csv_to_df(self) -> tuple:
         """Reads in CSV file, converts it to a number of Pandas DataFrames.
 
@@ -111,7 +62,6 @@ class BaselineModels:
 
         df = pd.read_csv(self.rpath, sep='\t')
         df['count'] = df.groupby(['user_id', 'tag_id']).user_id.transform('size')
-        # df = df[df['count'] < months*100]
         df_weights = df[['user_id', 'tag_id', 'count']].drop_duplicates(
             subset=['user_id', 'tag_id']
         )
@@ -133,7 +83,6 @@ class BaselineModels:
         df = df.merge(df_weights,
             on=['user_id', 'tag_id']
         )
-        # df_interactions, df_timestamps = df[['user_id', 'tag_id']], df['timestamp']
         return df
 
 class LightFMLib(BaselineModels):
@@ -162,24 +111,12 @@ class LightFMLib(BaselineModels):
 
         """
 
-        # user_locations = list(map('LOC:{0}'.format, list(set('|'.join(df_user_features['user_location'].tolist()).split('|')))))
-        # item_sectors = list(map('SECTOR:{0}'.format, list(set('|'.join(df_item_features['item_sectors'].tolist()).split('|')))))
-        # item_industries = list(map('INDUSTRY:{0}'.format, list(set('|'.join(df_item_features['item_industries'].tolist()).split('|')))))
-        # item_cashtags = list(map('TAG:{0}'.format, list(set('|'.join(df_item_features['item_cashtags'].tolist()).split('|')))))
-        # timestamp = list(map('TIME:{0}'.format, list(df_item_features['timestamp'])))
-
-        # user_features = user_locations
-        # item_features = timestamp+item_sectors+item_industries+item_cashtags
-
-        # item_features = df_item_features['tag_industry']+df_item_features['tag_sector'].tolist()
         
         dataset = Dataset()
         dataset.fit((x for x in df_interactions['user_id']),  
                     (x for x in df_interactions['tag_id']),
                     item_features=(x[len(x)-1] for x in df_item_features['timestamp']) if df_item_features is not None else None
                     )
-                    # item_features=item_features)
-        # return (dataset, user_locations, item_sectors, item_industries, item_cashtags)
         return dataset
 
     def build_interactions_matrix(self, dataset: Dataset, df_interactions: pd.DataFrame) -> tuple:
@@ -219,36 +156,6 @@ class LightFMLib(BaselineModels):
         (interactions, weights) = dataset.build_interactions(gen_rows(df_interactions))
         interactions = interactions.tocsr().tocoo()
         return (interactions, weights)
-
-    # def build_user_features(self, dataset: Dataset, df_user_features: pd.DataFrame) -> csr_matrix:
-    #     def gen_rows(df):
-    #         """Yields 
-
-    #         Args:
-    #            df (pandas.DataFrame): df_user_features matrix
-
-    #         Yields:
-    #             pandas.DataFrame: User IDs and their corresponding features as column separated values.
-
-    #         Examples:
-    #             Generates a row, line by line of item IDs and their corresponding features/weights to pass to the 
-    #             lightfm.data.Dataset.build_item_features function. The build_item_features function then normalises
-    #             these weights per row.
-
-    #             Also prepends each item with its type for a more accurate model.
-
-    #             >>> print(row)
-    #             [12345678, {'TAG:[CASHTAG]:2}]
-
-    #         """
-
-    #         for row in df.itertuples(index=False):
-    #             d = row._asdict()
-    #             user_locations = list(map('LOC:{0}'.format, d['user_location'].split('|') if '|' in d['user_location'] else [d['user_location']]))
-    #             yield [d['user_id'], user_locations]
-
-    #     user_features = dataset.build_user_features(gen_rows(df_user_features))
-    #     return user_features
 
     def build_item_features(self, dataset: Dataset, df_item_features: pd.DataFrame) -> csr_matrix:
         """Binds item features to item IDs, provided they exist in the fitted model.
@@ -298,9 +205,6 @@ class LightFMLib(BaselineModels):
                     for k, v in weights_obj.items():
                         yield [d['item_id'], {k:v}]
 
-
-                # item_feature_list = item_sectors+item_industries+item_cashtags
-                # yield [d['item_id'], item_feature_list]
         
         item_features = dataset.build_item_features(gen_rows(df_item_features), normalize=True)
         return item_features
@@ -390,28 +294,6 @@ class LightFMLib(BaselineModels):
             #                     item_features=item_features if item_features is not None else None, 
             #                     num_threads=NUM_THREADS).mean()
             # logger.info(model_name+' training set Precision@%s: %s' % (k, train_precision))
-            # test_precision = precision_at_k(model, 
-            #                     test, 
-            #                     k=k, 
-            #                     user_features=user_features if user_features is not None else None,
-            #                     item_features=item_features if item_features is not None else None, 
-            #                     num_threads=NUM_THREADS).mean()
-            # logger.info(model_name+' test set Precision@%s: %s' % (k, test_precision))
-
-            # train_recall = recall_at_k(model, 
-            #                     train, 
-            #                     k=k, 
-            #                     user_features=user_features if user_features is not None else None,
-            #                     item_features=item_features if item_features is not None else None, 
-            #                     num_threads=NUM_THREADS).mean()
-            # logger.info(model_name+' training set Recall@%s: %s' % (k, train_recall))
-            # test_recall = recall_at_k(model, 
-            #                     test, 
-            #                     k=k, 
-            #                     user_features=user_features if user_features is not None else None,
-            #                     item_features=item_features if item_features is not None else None, 
-            #                     num_threads=NUM_THREADS).mean()
-            # logger.info(model_name+' test set Recall@%s: %s' % (k, test_recall))
 
             precision = np.mean(lightfm_precision_at_k(model, train, test, k=k))
             logger.info(model_name+' Precision@%s: %s' % (k, precision))
@@ -419,12 +301,6 @@ class LightFMLib(BaselineModels):
             logger.info(model_name+' Recall@%s: %s' % (k, recall))
             fmeasure = 2*((precision*recall)/(precision+recall))
             logger.info(model_name+' F-Measure: %s' % fmeasure)
-
-            logger.info
-
-            # f1_train, f1_test = 2*(train_recall * train_precision) / (train_recall + train_precision), 2*(test_recall * test_precision) / (test_recall + test_precision)
-            # logger.info(model_name+' training set F1 Score: %s' % (f1_train))
-            # logger.info(model_name+' test set F1 Score: %s' % (f1_test))
 
         def mrr():
             """Evaluates models on their Mean Reciprocal Rank.
@@ -453,41 +329,6 @@ class LightFMLib(BaselineModels):
     def run(self):
         pass
 
-# class Implicit(BaselineModels):
-#     def __init__(self, model_type):
-#         super().__init__()
-#         os.environ['OPENBLAS_NUM_THREADS'] = '1'
-#         self.df = self.df[['user_id', 'tag_id']]
-#         self.df = self.df.groupby(['user_id', 'tag_id']).size().reset_index(name='weight')
-#         a = self.df.groupby('user_id')['weight'].transform('sum')
-#         self.df['weight'] = self.df['weight'].div(a)
-
-#         users = list(np.sort(self.df['user_id'].unique())) 
-#         items = list(self.df['tag_id'].unique())
-#         weights = list(self.df['weight']) 
-
-#         rows = self.df['user_id'].astype('category', categories = users).cat.codes
-#         cols = self.df['tag_id'].astype('category', categories = items).cat.codes 
-
-#         # self.sparse_repr = csr_matrix((weights, (rows, cols)), shape=(len(users), len(items)))
-#         self.sparse_repr = csr_matrix((weights,(cols, rows)), shape=(len(items), len(users)))
-#         self.model_type = model_type
-
-#     def fit(self):
-#         model = implicit.als.AlternatingLeastSquares(factors=50) if self.model_type is 'als' else implicit.approximate_als.NMSLibAlternatingLeastSquares()
-#         model.fit(self.sparse_repr)
-#         return model
-
-#     def evaluate(self, model):
-#         train, test = train_test_split(self.sparse_repr, 0.8)
-#         mapk = implicit_precision_at_k(model, train, test, K=5, num_threads=4)
-#         print("Prec@5: {}".format(mapk))
-
-#     def run(self):
-#         model = self.fit()
-#         self.evaluate(model)
-
-# END OF BASE MODELS
 
 class LFMCF(LightFMLib):
     def __init__(self):
@@ -513,7 +354,6 @@ class LFMCF(LightFMLib):
                         item_alpha=ITEM_ALPHA,
                     no_components=NUM_COMPONENTS)
 
-        # Run 3 epochs and time it.
         logger.info('Begin fitting collaborative filtering model @ Epochs: {}'.format(NUM_EPOCHS))
         model = model.fit(train, epochs=NUM_EPOCHS, num_threads=NUM_THREADS)
         return model
@@ -531,9 +371,7 @@ class LFMCF(LightFMLib):
         params = (NUM_THREADS, _, _, _) = (4,32,10,0.01)
 
         df_interactions, df_item_features = self.df[['user_id', 'tag_id', 'count']], self.df[['timestamp']]
-        # df_user_features, df_item_features, df_interactions = df[['user_id', 'user_location']], df[['item_id', 'timestamp', 'item_body','item_titles', 'item_cashtags', 'item_industries', 'item_sectors']], df[['user_id', 'item_id']]
 
-        # dataset, user_locations, item_sectors, item_industries, item_cashtags = self.build_id_mappings(df_interactions, df_user_features, df_item_features)
         dataset = self.build_id_mappings(df_interactions, df_item_features)
         interactions, _ = self.build_interactions_matrix(dataset, df_interactions)
         train, test = self.cross_validate_interactions(interactions)
@@ -543,7 +381,6 @@ class LFMCF(LightFMLib):
         cf_model = self.cf_model(train, params)
         self.evaluate_model(model=cf_model, model_name='cf', eval_metrics=['precrec'], sets=(train, test), NUM_THREADS=NUM_THREADS, k=k)
 
-        #logger.info('There are {0} distinct user locations, {1} distinct sectors, {2} distinct industries and {3} distinct cashtags.'.format(len(user_locations), len(item_sectors), len(item_industries), len(item_cashtags)))
         self.model_name = '_lfm_cf'
 
 class LFMHybrid(LightFMLib):
@@ -569,14 +406,11 @@ class LFMHybrid(LightFMLib):
 
         logger = logging.getLogger()
         NUM_THREADS, NUM_COMPONENTS, NUM_EPOCHS, ITEM_ALPHA = params
-        # Define a new model instance
         model = LightFM(loss='warp',
                         item_alpha=ITEM_ALPHA,
                         no_components=NUM_COMPONENTS,
                         random_state=RANDOM_STATE)
 
-        # Fit the hybrid model. Note that this time, we pass
-        # in the item features matrix.
         logger.info('Begin fitting hybrid model...')
         model = model.fit(train,
                         item_features=item_features,
@@ -591,7 +425,6 @@ class LFMHybrid(LightFMLib):
         params = (NUM_THREADS, _, _, _) = (4,30,10,1e-16)
 
         df = self.csv_to_df()
-        # df_user_features, df_item_features, df_interactions = df[['user_id', 'user_location']], df[['item_id', 'timestamp', 'item_body','item_titles', 'item_cashtags', 'item_industries', 'item_sectors']], df[['user_id', 'item_id']]
         df_interactions, df_item_features = df[['user_id', 'tag_id', 'count']], df[['timestamp','tag_industry', 'tag_sector']]
 
         dataset = self.build_id_mappings(df_interactions, df_item_features)
@@ -620,7 +453,6 @@ class SpotlightMF(BaselineModels):
             # timestamps=np.array([int(x[len(x)-1]) for x in timestamps]),
             weights=weights
         )
-        # logger.info("Build interactions object: {}".format(interactions))
         return interactions
 
     def run(self, loss, k):
@@ -650,7 +482,6 @@ class SpotlightMF(BaselineModels):
         logger.info("Begin fitting {0} model for {1} epochs...".format(self.loss, NUM_EPOCHS))
         model.fit(train, verbose=True)
 
-        # mrr = mrr_score(model, test)
         precrec = precision_recall_score(model, train, test, k=k)
         precision = np.mean(precrec[0])
         recall = np.mean(precrec[1])
@@ -668,9 +499,3 @@ for loss in ('bpr', 'warp', 'warp-kos'):
 
 # for loss in ('pointwise', 'hinge', 'adaptive_hinge', 'bpr'):
 #     spot.run(loss, 5)
-
-# als = Implicit('aals')
-# als.run()
-
-# slight = SpotlightMF()
-# slight.run()
