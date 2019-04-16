@@ -65,6 +65,7 @@ class BaselineModels:
         """
 
         df = pd.read_csv(self.rpath, sep='\t')
+        df_symbol_features = df[['user_id', 'tag_id', 'tag_industry', 'tag_sector']]
         df['count'] = df.groupby(['user_id', 'tag_id']).user_id.transform('size')
         df_weights = df[['user_id', 'tag_id', 'count']].drop_duplicates(
             subset=['user_id', 'tag_id']
@@ -84,16 +85,22 @@ class BaselineModels:
 
         listjoin = lambda x: [j for i in x for j in i]
         df['timestamp'] = df['timestamp'].apply(listjoin)
-        df = df.merge(df_weights,
+        df = df.merge(
+            df_weights,
             on=['user_id', 'tag_id']
         )
+        df = df.merge(
+            df_symbol_features,
+            on=['user_id', 'tag_id']
+        )
+        df = df.drop_duplicates(subset=['user_id', 'tag_id'])
         return df
 
 class LightFMLib(BaselineModels):
     def __init__(self):
         super().__init__()
 
-    def build_id_mappings(self) -> Dataset:
+    def build_id_mappings(self, hybrid=False) -> Dataset:
         """Builds internal indice mapping for user-item interactions and encodes item features.
 
         Reads in user-item interactions and the features associated with each item and builds a mapping 
@@ -117,13 +124,15 @@ class LightFMLib(BaselineModels):
 
         
         dataset = Dataset()
-        dataset.fit((x for x in self.df['user_id']),  
-                    (x for x in self.df['tag_id']),
+        dataset.fit(
+            (x for x in self.df['user_id']),
+            (x for x in self.df['tag_id']),
+            item_features=(x for x in self.df['tag_sector']) if hybrid else None
                     # item_features=(x[len(x)-1] for x in df_item_features['timestamp']) if df_item_features is not None else None
-                    )
+        )
         return dataset
 
-    def build_interactions_matrix(self, dataset: Dataset) -> tuple:
+    def build_interactions_matrix(self, dataset) -> tuple:
         """Builds a matrix of interactions between user and item.
 
         Takes as params a lightfm.data.Dataset object consisting of mapping between users
@@ -161,7 +170,7 @@ class LightFMLib(BaselineModels):
         interactions = interactions.tocsr().tocoo()
         return (interactions, weights)
 
-    def build_item_features(self, dataset: Dataset) -> csr_matrix:
+    def build_item_features(self, dataset) -> csr_matrix:
         """Binds item features to item IDs, provided they exist in the fitted model.
 
         Takes as params a lightfm.data.Dataset object consisting of mapping between users
@@ -197,6 +206,9 @@ class LightFMLib(BaselineModels):
 
             """
 
+            for row in df.itertuples(index=False):
+                yield (row.tag_id, [row.tag_sector])
+
             # for row in df.itertuples(index=False):
             #     d = row._asdict()
             #     timestamp = 'TIME:'+str(d['timestamp'])
@@ -213,7 +225,7 @@ class LightFMLib(BaselineModels):
         item_features = dataset.build_item_features(gen_rows(self.df), normalize=True)
         return item_features
 
-    def cross_validate_interactions(self, interactions: coo_matrix) -> tuple:
+    def cross_validate_interactions(self, interactions) -> tuple:
         """Randomly split interactions between training and testing.
 
         This function takes an interaction set and splits it into two disjoint sets, a training set and a test set. 
@@ -229,7 +241,7 @@ class LightFMLib(BaselineModels):
         train, test = lightfm_random_train_test_split(interactions)
         return train, test
 
-    def evaluate_model(self, model: LightFM, model_name: str, eval_metrics: list, sets: tuple, NUM_THREADS: str, item_features: csr_matrix=None, k: int=None):
+    def evaluate_model(self, model, model_name, eval_metrics, sets, NUM_THREADS, item_features=None, k=None):
         """Evaluates models on a number of metrics
 
         Takes model and evaluates it depending on which evaluation metrics are passed in.
@@ -299,10 +311,28 @@ class LightFMLib(BaselineModels):
             #                     num_threads=NUM_THREADS).mean()
             # logger.info(model_name+' training set Precision@%s: %s' % (k, train_precision))
 
-            precision = np.mean(lightfm_precision_at_k(model, train, test, k=k))
+            precision = np.mean(
+                lightfm_precision_at_k(
+                    model=model,
+                    train_interactions=train,
+                    test_interactions=test,
+                    k=k,
+                    item_features=item_features
+                )
+            )
             logger.info(model_name+' Precision@%s: %s' % (k, precision))
-            recall = np.mean(recall_at_k(model, train, test, k=k))
+
+            recall = np.mean(
+                recall_at_k(
+                    model=model, 
+                    train_interactions=train,
+                    test_interactions=test,
+                    k=k,
+                    item_features=item_features
+                )
+            )
             logger.info(model_name+' Recall@%s: %s' % (k, recall))
+
             fmeasure = 2*((precision*recall)/(precision+recall))
             logger.info(model_name+' F-Measure: %s' % fmeasure)
 
@@ -341,7 +371,7 @@ class LFMRun(LightFMLib):
         self.loss = None
         self.model_name = 'lfm'
 
-    def cf_model(self, train: coo_matrix, params: tuple, item_features: csr_matrix=None) -> LightFM:
+    def cf_model(self, train, params, item_features=None) -> LightFM:
         """Trains a pure collaborative filtering model.
 
         Args:
@@ -385,7 +415,7 @@ class LFMRun(LightFMLib):
 
         # df_interactions, df_item_features = self.df[['user_id', 'tag_id', 'count']], self.df[['timestamp']]
 
-        dataset = self.build_id_mappings()
+        dataset = self.build_id_mappings(hybrid=True if self.filter is 'hybrid' else False)
         interactions, _ = self.build_interactions_matrix(dataset)
         item_features = self.build_item_features(dataset) if self.filter is 'hybrid' else None
         train, test = self.cross_validate_interactions(interactions)
@@ -509,7 +539,12 @@ class SpotlightMF(BaselineModels):
         logger.info("Begin fitting {0} model for {1} epochs...".format(self.loss, NUM_EPOCHS))
         model.fit(train, verbose=True)
 
-        precrec = precision_recall_score(model, train, test, k=k)
+        precrec = precision_recall_score(
+            model=model, 
+            train=train, 
+            test=test, 
+            k=k
+        )
         precision = np.mean(precrec[0])
         recall = np.mean(precrec[1])
         fmeasure = 2*((precision*recall)/(precision+recall))
@@ -521,9 +556,9 @@ class SpotlightMF(BaselineModels):
 lfm_cf = LFMRun()
 # spot = SpotlightMF()
 
-for filtering in ('cf', 'hybrid'):
+for filtering in ('hybrid', 'cf'):
     for loss in ('bpr', 'warp', 'warp-kos'):
-        if filtering is 'hybrid': sys.exit(0)
+        if filtering is 'cf': sys.exit(0)
         lfm_cf.run(filtering, loss, 3)
 
 # for loss in ('pointwise', 'hinge', 'adaptive_hinge', 'bpr'):

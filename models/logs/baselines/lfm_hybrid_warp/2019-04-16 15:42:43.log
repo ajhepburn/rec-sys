@@ -1,6 +1,0 @@
-2019-04-16 15:42:43,655 [MainThread  ] [INFO ]  Training LightFM HYBRID model, Loss: WARP
-2019-04-16 15:42:53,863 [MainThread  ] [INFO ]  The dataset has 5839 users and 1043 items with 1981 interactions in the test and 7924 interactions in the training set.
-2019-04-16 15:42:53,863 [MainThread  ] [INFO ]  Begin fitting collaborative filtering model @ Epochs: 10
-2019-04-16 15:42:56,231 [MainThread  ] [INFO ]  Hybrid Precision@3: 0.108635694
-2019-04-16 15:42:56,406 [MainThread  ] [INFO ]  Hybrid Recall@3: 0.29124972559090956
-2019-04-16 15:42:56,406 [MainThread  ] [INFO ]  Hybrid F-Measure: 0.15824590981280431

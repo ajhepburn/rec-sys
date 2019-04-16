@@ -1,6 +1,0 @@
-2019-04-16 14:34:37,570 [MainThread  ] [INFO ]  Training LightFM CF model, Loss: BPR
-2019-04-16 14:34:37,638 [MainThread  ] [INFO ]  The dataset has 5839 users and 1043 items with 1981 interactions in the test and 7924 interactions in the training set.
-2019-04-16 14:34:37,639 [MainThread  ] [INFO ]  Begin fitting collaborative filtering model @ Epochs: 10
-2019-04-16 14:34:37,872 [MainThread  ] [INFO ]  Collaborative Filtering Precision@3: 0.21161239
-2019-04-16 14:34:38,028 [MainThread  ] [INFO ]  Collaborative Filtering Recall@3: 0.4862869110445552
-2019-04-16 14:34:38,028 [MainThread  ] [INFO ]  Collaborative Filtering F-Measure: 0.2948973721760266
