@@ -1,0 +1,6 @@
+2019-04-16 15:42:27,420 [MainThread  ] [INFO ]  Training LightFM HYBRID model, Loss: BPR
+2019-04-16 15:42:37,370 [MainThread  ] [INFO ]  The dataset has 5839 users and 1043 items with 1981 interactions in the test and 7924 interactions in the training set.
+2019-04-16 15:42:37,371 [MainThread  ] [INFO ]  Begin fitting collaborative filtering model @ Epochs: 10
+2019-04-16 15:42:43,476 [MainThread  ] [INFO ]  Hybrid Precision@3: 0.00086132647
+2019-04-16 15:42:43,652 [MainThread  ] [INFO ]  Hybrid Recall@3: 6.730995103088126e-05
+2019-04-16 15:42:43,653 [MainThread  ] [INFO ]  Hybrid F-Measure: 0.0001248623060259001

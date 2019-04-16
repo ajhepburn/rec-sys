@@ -1,0 +1,6 @@
+2019-04-16 15:47:45,165 [MainThread  ] [INFO ]  Training LightFM CF model, Loss: WARP-KOS
+2019-04-16 15:47:45,228 [MainThread  ] [INFO ]  The dataset has 5839 users and 1043 items with 1981 interactions in the test and 7924 interactions in the training set.
+2019-04-16 15:47:45,229 [MainThread  ] [INFO ]  Begin fitting collaborative filtering model @ Epochs: 10
+2019-04-16 15:47:45,405 [MainThread  ] [INFO ]  Collaborative Filtering Precision@3: 0.3479027
+2019-04-16 15:47:45,551 [MainThread  ] [INFO ]  Collaborative Filtering Recall@3: 0.8143428293105569
+2019-04-16 15:47:45,552 [MainThread  ] [INFO ]  Collaborative Filtering F-Measure: 0.4875253181357534

@@ -1,0 +1,6 @@
+2019-04-16 15:47:44,716 [MainThread  ] [INFO ]  Training LightFM CF model, Loss: WARP
+2019-04-16 15:47:44,823 [MainThread  ] [INFO ]  The dataset has 5839 users and 1043 items with 1981 interactions in the test and 7924 interactions in the training set.
+2019-04-16 15:47:44,824 [MainThread  ] [INFO ]  Begin fitting collaborative filtering model @ Epochs: 10
+2019-04-16 15:47:45,033 [MainThread  ] [INFO ]  Collaborative Filtering Precision@3: 0.34280148
+2019-04-16 15:47:45,163 [MainThread  ] [INFO ]  Collaborative Filtering Recall@3: 0.801475533243844
+2019-04-16 15:47:45,163 [MainThread  ] [INFO ]  Collaborative Filtering F-Measure: 0.48021064241211203
