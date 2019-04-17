@@ -349,15 +349,12 @@ class LightFMLib(BaselineModels):
 
             """
 
-            precision = np.mean(
-                reciprocal_rank(
-                    model=model,
-                    train_interactions=train,
-                    test_interactions=test,
-                    item_features=item_features
-                )
-            )
-            logger.info(model_name+' MRR: %s' % (precision))
+            mrr = reciprocal_rank(
+                model=model,
+                test_interactions=test,
+                train_interactions=train
+            ).mean()
+            logger.info(model_name+' MRR: %s' % (mrr))
 
         for metric in eval_metrics:
             locals()[metric]()
@@ -434,7 +431,7 @@ class LFMRun(LightFMLib):
         self.evaluate_model(
             model=cf_model, 
             model_name=self.filter, 
-            eval_metrics=['auc'], 
+            eval_metrics=['mrr', 'precrec'], 
             sets=(train, test), 
             NUM_THREADS=NUM_THREADS, 
             k=k,
@@ -556,13 +553,19 @@ class SpotlightMF(BaselineModels):
             k=k
         )
 
+        mrr = mrr_score(
+            model=model,
+            train=train,
+            test=test
+        ).mean()
+
         precision = np.mean(precrec[0])
         recall = np.mean(precrec[1])
         fmeasure = 2*((precision*recall)/(precision+recall))
         logger.info("Precision@{0}: {1}".format(k, precision))
         logger.info("Recall@{0}: {1}".format(k, recall))
         logger.info("F-Measure: {}".format(fmeasure))
-        logger.info("RMSE: {}".format(rmse))
+        logger.info("MRR: {}".format(mrr))
         self.model_name = 'spot'
 
 lfm_cf = LFMRun()
@@ -572,8 +575,8 @@ for _ in range(10):
     for filtering in ['cf']:
         for loss in ('bpr', 'warp', 'warp-kos'):
             lfm_cf.run(filtering, loss, 3)
-        # for loss in ('pointwise', 'hinge', 'bpr'):
-        #     spot.run(filtering, loss, 3)
+        for loss in ('pointwise', 'hinge', 'bpr'):
+            spot.run(filtering, loss, 3)
 
 # for filtering in ['cf', 'hybrid']:
     

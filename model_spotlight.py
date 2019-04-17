@@ -147,7 +147,7 @@ class SpotlightModel:
     def __init__(self):
         self._logpath = './models/logs/sequence/'
         self._rpath = './data/csv/dataparser/data.csv'
-        self._models = 'S_CNN'
+        self._models = 'S_LSTM'
 
     def logger(self):
         """Sets logger config to both std.out and log ./log/models/spotlightimplicitmodel/
@@ -436,44 +436,34 @@ class SpotlightModel:
         logger.info("Beginning model evaluation...")
 
         if self._models in ('S_POOL', 'S_CNN', 'S_LSTM'):
-            train_mrr = sequence_mrr_score(model, train).mean()
-            test_mrr = sequence_mrr_score(model, test).mean()
+            mrr = sequence_mrr_score(model, test).mean()
         else:
-            train_mrr = mrr_score(model, train).mean()
-            test_mrr = mrr_score(model, test).mean()
-        logger.info('Train MRR {:.8f}, test MRR {:.8f}'.format(
-            train_mrr, test_mrr
+            mrr = mrr_score(model, test).mean()
+        logger.info('MRR {:.8f}'.format(
+            mrr
         ))
 
         k = 3
-        if self._models in ('S_POOL', 'S_CNN', 'S_LSTM'):
-            train_prec, train_rec = sequence_precision_recall_score(model, train, k=k)
-            test_prec, test_rec = sequence_precision_recall_score(model, test, k=k)
-        else:
-            train_prec, train_rec = precision_recall_score(model, train, k=k)
-            test_prec, test_rec = precision_recall_score(model, test, k=k)
-        logger.info('Train Precision@{k} {:.8f}, test Precision@{k} {:.8f}'.format(
-            train_prec.mean(),
-            test_prec.mean(),
+        
+        prec, rec = sequence_precision_recall_score(
+            model=model,
+            test=test,
+            k=k,
+        )
+        logger.info('Precision@{k} {:.8f}'.format(
+            prec.mean(),
             k=k
         ))
-        logger.info('Train Recall@{k} {:.8f}, test Recall@{k} {:.8f}'.format(
-            train_rec.mean(),
-            test_rec.mean(),
+        logger.info('Recall@{k} {:.8f}'.format(
+            rec.mean(),
             k=k
         ))
         return {
-            'train': {
-                'precision':train_prec.mean(),
-                'recall':train_rec.mean(),
-                'f1': 2*((train_prec.mean()*train_rec.mean())/(train_prec.mean()+train_rec.mean())),
-                'mrr':train_mrr,
-            },
             'test': {
-                'precision':test_prec.mean(),
-                'recall':test_rec.mean(),
-                'f1': 2*((test_prec.mean()*test_rec.mean())/(test_prec.mean()+test_rec.mean())),
-                'mrr':test_mrr,
+                'precision':prec.mean(),
+                'recall':rec.mean(),
+                'f1': 2*((prec.mean()*rec.mean())/(prec.mean()+rec.mean())),
+                'mrr':mrr,
             },
         }
 

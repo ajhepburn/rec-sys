@@ -49,7 +49,7 @@ class FactorisationMachines:
                     logging.StreamHandler(sys.stdout)
                 ])
 
-    def libfm(self, loss):
+    def libfm(self, loss='mcmc'):
         # ./libFM -train /media/ntfs/Workspace/Project/rec-sys/data/csv/dataparser/train.libfm -validation /media/ntfs/Workspace/Project/rec-sys/data/csv/dataparser/validation.libfm -test /media/ntfs/Workspace/Project/rec-sys/data/csv/dataparser/test.libfm -task r -dim '1,1,4' -iter 1000 -method mcmc -out /media/ntfs/Workspace/Project/rec-sys/data/csv/dataparser/out.libfm
         # predictions = pd.read_csv(join(self.dpath, 'out.libfm'), header=None).values.flatten()
         predictions = pd.read_csv(join('/home/alex/libfm_variant_test/out/', 'out-'+loss+'.libfm'), header=None).values.flatten()
@@ -83,7 +83,7 @@ class FactorisationMachines:
         model = TFFMRegressor(
             order=2,
             rank=4,
-            optimizer=tf.train.FtrlOptimizer(learning_rate=0.1),
+            optimizer=tf.train.AdamOptimizer(learning_rate=0.1),
             n_epochs=100,
             batch_size=-1,
             init_std=0.001,
@@ -126,9 +126,8 @@ class FactorisationMachines:
         for handler in logging.root.handlers[:]:
             logging.root.removeHandler(handler)
 
-        for prog in ['libfm']:
-            for loss in ('als', 'sgd', 'sgda', 'mcmc'):
-                print(loss, prog, getattr(self, prog)(loss))
+        for prog in ['libfm', 'fastfm', 'tffm']:
+            print(prog, getattr(self, prog)())
 
 
 fm = FactorisationMachines()
