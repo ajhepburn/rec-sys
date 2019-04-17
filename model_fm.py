@@ -20,14 +20,14 @@ class FactorisationMachines:
         self._data_path = './data/libsvm/'
         self._libfm_path = './models/fm/libfm/'
         self._xlearn_path = './models/fm/xlearn/'
-        self.X_train, self.y_train = load_svmlight_file(join(self._data_path,'train.libsvm'))
-        self.X_test, self.y_test = load_svmlight_file(join(self._data_path,'test.libsvm'))
+        self.X_train, self.y_train = load_svmlight_file(join(self._data_path,'train.libfm'))
+        self.X_test, self.y_test = load_svmlight_file(join(self._data_path,'test.libfm'))
 
         self.onlyResults = onlyResults
         self.metric = metric
 
     def libfm(self):
-        # ./libFM -train /media/ntfs/Workspace/Project/rec-sys/data/libsvm/train.libsvm -test /media/ntfs/Workspace/Project/rec-sys/data/libsvm/test.libsvm -task r -dim '1,1,4' -iter 1000 -method mcmc
+        # ./libFM -train /media/ntfs/Workspace/Project/rec-sys/data/csv/dataparser/train.libfm -validation /media/ntfs/Workspace/Project/rec-sys/data/csv/dataparser/validation.libfm -test /media/ntfs/Workspace/Project/rec-sys/data/csv/dataparser/test.libfm -task r -dim '1,1,4' -iter 1000 -method mcmc -out /media/ntfs/Workspace/Project/rec-sys/data/csv/dataparser/out.libfm
         predictions = pd.read_csv(join(self._libfm_path, 'output.libfm'), header=None).values.flatten()
         testY = self.y_test
         rmse = np.sqrt(mean_squared_error(testY, predictions))

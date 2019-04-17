@@ -13,7 +13,7 @@ import implicit
 from spotlight.interactions import Interactions
 from spotlight.cross_validation import random_train_test_split as spotlight_random_train_test_split
 from spotlight.datasets.movielens import get_movielens_dataset
-from spotlight.evaluation import mrr_score, precision_recall_score
+from spotlight.evaluation import mrr_score, precision_recall_score, rmse_score
 from spotlight.factorization.implicit import ImplicitFactorizationModel
 
 from implicit.evaluation import train_test_split
@@ -33,7 +33,7 @@ class BaselineModels:
     def __init__(self):
         self.logpath = 'logs/baselines/'
         # self.rpath = './data/csv/cashtags_clean.csv'
-        self.rpath = '../data/csv/dataparser/03_bot_cleaned.csv'
+        self.rpath = '../data/csv/dataparser/data.csv'
         self.df = self.csv_to_df()
 
     def logger(self, model_name):
@@ -272,20 +272,29 @@ class LightFMLib(BaselineModels):
 
             """
 
-            train_auc = auc_score(model,
-                            train,
-                            user_features=user_features if user_features is not None else None,
-                            item_features=item_features if item_features is not None else None,
-                            num_threads=NUM_THREADS).mean()
-            logger.info(model_name+' training set AUC: %s' % train_auc)
-
-            test_auc = auc_score(model,
-                    test,
+            auc = auc_score(
+                    model=model,
                     train_interactions=train,
-                    user_features=user_features if user_features is not None else None,
-                    item_features=item_features if item_features is not None else None,
-                    num_threads=NUM_THREADS).mean()
-            logger.info(model_name+' test set AUC: %s' % test_auc)
+                    test_interactions=test,
+                    item_features=item_features
+                ).mean()
+            logger.info(model_name+' AUC: %s' % auc)
+
+
+            # train_auc = auc_score(model,
+            #                 train,
+            #                 user_features=user_features if user_features is not None else None,
+            #                 item_features=item_features if item_features is not None else None,
+            #                 num_threads=NUM_THREADS).mean()
+            # logger.info(model_name+' training set AUC: %s' % train_auc)
+
+            # test_auc = auc_score(model,
+            #         test,
+            #         train_interactions=train,
+            #         user_features=user_features if user_features is not None else None,
+            #         item_features=item_features if item_features is not None else None,
+            #         num_threads=NUM_THREADS).mean()
+            logger.info(model_name+' test set AUC: %s' % auc)
 
         def precrec():
             """Evaluates models on Precision@K/Recall@K and also outputs F1 Score.
@@ -311,26 +320,22 @@ class LightFMLib(BaselineModels):
             #                     num_threads=NUM_THREADS).mean()
             # logger.info(model_name+' training set Precision@%s: %s' % (k, train_precision))
 
-            precision = np.mean(
-                lightfm_precision_at_k(
+            precision = lightfm_precision_at_k(
                     model=model,
                     train_interactions=train,
                     test_interactions=test,
                     k=k,
                     item_features=item_features
-                )
-            )
+                ).mean()
             logger.info(model_name+' Precision@%s: %s' % (k, precision))
 
-            recall = np.mean(
-                recall_at_k(
+            recall = recall_at_k(
                     model=model, 
                     train_interactions=train,
                     test_interactions=test,
                     k=k,
                     item_features=item_features
-                )
-            )
+                ).mean()
             logger.info(model_name+' Recall@%s: %s' % (k, recall))
 
             fmeasure = 2*((precision*recall)/(precision+recall))
@@ -344,18 +349,15 @@ class LightFMLib(BaselineModels):
 
             """
 
-            train_mrr = reciprocal_rank(model, 
-                                train, 
-                                user_features=user_features if user_features is not None else None,
-                                item_features=item_features if item_features is not None else None, 
-                                num_threads=NUM_THREADS).mean()
-            logger.info(model_name+' training set MRR: %s' % (train_mrr))
-            test_mrr = reciprocal_rank(model, 
-                                test, 
-                                user_features=user_features if user_features is not None else None,
-                                item_features=item_features if item_features is not None else None, 
-                                num_threads=NUM_THREADS).mean()
-            logger.info(model_name+' test set MRR: %s' % (test_mrr))
+            precision = np.mean(
+                reciprocal_rank(
+                    model=model,
+                    train_interactions=train,
+                    test_interactions=test,
+                    item_features=item_features
+                )
+            )
+            logger.info(model_name+' MRR: %s' % (precision))
 
         for metric in eval_metrics:
             locals()[metric]()
@@ -389,6 +391,7 @@ class LFMRun(LightFMLib):
             loss=self.loss,
             item_alpha=ITEM_ALPHA,
             no_components=NUM_COMPONENTS,
+            learning_rate=1e-3
         )
 
         logger.info('Begin fitting collaborative filtering model @ Epochs: {}'.format(NUM_EPOCHS))
@@ -411,7 +414,7 @@ class LFMRun(LightFMLib):
         self.logger(self.model_name)
         logger = logging.getLogger()
         logger.info("Training LightFM {0} model, Loss: {1}".format(self.filter.upper(), self.loss.upper()))
-        params = (NUM_THREADS, _, _, _) = (4,32,10,0.01)
+        params = (NUM_THREADS, _, _, _) = (4, 32, 10, 1e-05)
 
         # df_interactions, df_item_features = self.df[['user_id', 'tag_id', 'count']], self.df[['timestamp']]
 
@@ -431,7 +434,7 @@ class LFMRun(LightFMLib):
         self.evaluate_model(
             model=cf_model, 
             model_name=self.filter, 
-            eval_metrics=['precrec'], 
+            eval_metrics=['auc'], 
             sets=(train, test), 
             NUM_THREADS=NUM_THREADS, 
             k=k,
@@ -497,8 +500,9 @@ class LFMRun(LightFMLib):
 class SpotlightMF(BaselineModels):
     def __init__(self):
         super().__init__()
+        self.filter = None
         self.loss = None
-        self.model_name = '_spot_cf'
+        self.model_name = 'spot'
 
     def build_interactions_object(self, df_interactions: pd.DataFrame, df_timestamps: pd.DataFrame) -> Interactions:
         user_ids = df_interactions['user_id'].values.astype(int)
@@ -507,17 +511,19 @@ class SpotlightMF(BaselineModels):
         interactions = Interactions(
             user_ids=user_ids,
             item_ids=cashtag_ids,
-            # timestamps=np.array([int(x[len(x)-1]) for x in timestamps]),
+            timestamps=np.array([x for x in timestamps]) if self.filter is 'hybrid' else None,
             weights=weights
         )
         return interactions
 
-    def run(self, loss, k):
+    def run(self, filtering, loss, k):
         for handler in logging.root.handlers[:]:
             logging.root.removeHandler(handler)
 
+        self.filter = filtering
         self.loss = loss
-        self.model_name = self.loss+self.model_name
+        self.model_name = str.join('_', (self.model_name, self.filter, self.loss))
+
         self.logger(self.model_name)
         logger = logging.getLogger()
 
@@ -534,6 +540,10 @@ class SpotlightMF(BaselineModels):
             loss=self.loss, 
             random_state=RANDOM_STATE,
             use_cuda=True,
+            embedding_dim=64,  # latent dimensionality
+            batch_size=128,  # minibatch size
+            l2=1e-9,  # strength of L2 regularization
+            learning_rate=1e-3,
         )
 
         logger.info("Begin fitting {0} model for {1} epochs...".format(self.loss, NUM_EPOCHS))
@@ -545,21 +555,28 @@ class SpotlightMF(BaselineModels):
             test=test, 
             k=k
         )
+
         precision = np.mean(precrec[0])
         recall = np.mean(precrec[1])
         fmeasure = 2*((precision*recall)/(precision+recall))
         logger.info("Precision@{0}: {1}".format(k, precision))
         logger.info("Recall@{0}: {1}".format(k, recall))
         logger.info("F-Measure: {}".format(fmeasure))
-        self.model_name = '_spot_cf'
+        logger.info("RMSE: {}".format(rmse))
+        self.model_name = 'spot'
 
 lfm_cf = LFMRun()
-# spot = SpotlightMF()
+spot = SpotlightMF()
 
-for filtering in ('hybrid', 'cf'):
-    for loss in ('bpr', 'warp', 'warp-kos'):
-        if filtering is 'cf': sys.exit(0)
-        lfm_cf.run(filtering, loss, 3)
+for _ in range(10):
+    for filtering in ['cf']:
+        for loss in ('bpr', 'warp', 'warp-kos'):
+            lfm_cf.run(filtering, loss, 3)
+        # for loss in ('pointwise', 'hinge', 'bpr'):
+        #     spot.run(filtering, loss, 3)
+
+# for filtering in ['cf', 'hybrid']:
+    
 
 # for loss in ('pointwise', 'hinge', 'adaptive_hinge', 'bpr'):
 #     spot.run(loss, 5)

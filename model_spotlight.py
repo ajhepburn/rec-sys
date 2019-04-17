@@ -38,7 +38,7 @@ DEFAULT_PARAMS = {
 }
 
 LEARNING_RATES = [1e-3, 1e-2, 5 * 1e-2, 1e-1]
-LOSSES = ['bpr', 'hinge', 'adaptive_hinge', 'pointwise']
+LOSSES = ['bpr', 'hinge', 'pointwise']
 BATCH_SIZE = [8, 16, 32, 256]
 EMBEDDING_DIM = [8, 16, 32, 64, 128, 256]
 N_ITER = list(range(5, 20))
@@ -56,14 +56,14 @@ class Results:
     """
 
     def __init__(self, filename: str):
-        self._respath = './log/models/spotlightimplicitmodel/results/'
+        self._respath = './models/logs/sequence/results/'
         self._filename = filename
         self._hash = lambda x: hashlib.md5(
             json.dumps(x, sort_keys=True).encode('utf-8')
         ).hexdigest()
         open(self._respath+self._filename, 'a+')
 
-    def save(self, evaluation: dict, hyperparameters: dict):
+    def save(self, hyperparameters: dict, evaluation: dict):
         """Saves the output from a model evaluation instance to file.
 
         Args:
@@ -88,8 +88,9 @@ class Results:
 
         """
 
+        # print(x for x in self)
         results = sorted([x for x in self],
-                         key=lambda x: -x['test']['mrr'])
+                         key=lambda x: -x['evaluation']['test']['f1'])
 
         if results:
             return results[0]
@@ -144,9 +145,9 @@ class SpotlightModel:
     """
 
     def __init__(self):
-        self._logpath = './log/models/spotlightimplicitmodel/'
-        self._rpath = './data/csv/cashtags_clean.csv'
-        self._models = 'S_LSTM'
+        self._logpath = './models/logs/sequence/'
+        self._rpath = './data/csv/dataparser/data.csv'
+        self._models = 'S_CNN'
 
     def logger(self):
         """Sets logger config to both std.out and log ./log/models/spotlightimplicitmodel/
@@ -177,8 +178,16 @@ class SpotlightModel:
         """
 
         df = pd.read_csv(self._rpath, sep='\t')
+        
+        df = df.rename(
+            columns={
+                'tag_id':'item_tag_ids',
+                'timestamp':'item_timestamp'
+            }
+        )
+ 
         df['count'] = df.groupby(['user_id', 'item_tag_ids']).user_id.transform('size')
-        df = df[df['count'] < months*100]
+        # df = df[df['count'] < months*100]
         df_weights = df[['user_id', 'item_tag_ids', 'count']].drop_duplicates(
             subset=['user_id', 'item_tag_ids']
         )
@@ -436,7 +445,7 @@ class SpotlightModel:
             train_mrr, test_mrr
         ))
 
-        k = 5
+        k = 3
         if self._models in ('S_POOL', 'S_CNN', 'S_LSTM'):
             train_prec, train_rec = sequence_precision_recall_score(model, train, k=k)
             test_prec, test_rec = sequence_precision_recall_score(model, test, k=k)
@@ -457,11 +466,13 @@ class SpotlightModel:
             'train': {
                 'precision':train_prec.mean(),
                 'recall':train_rec.mean(),
+                'f1': 2*((train_prec.mean()*train_rec.mean())/(train_prec.mean()+train_rec.mean())),
                 'mrr':train_mrr,
             },
             'test': {
                 'precision':test_prec.mean(),
                 'recall':test_rec.mean(),
+                'f1': 2*((test_prec.mean()*test_rec.mean())/(test_prec.mean()+test_rec.mean())),
                 'mrr':test_mrr,
             },
         }
@@ -487,9 +498,9 @@ class SpotlightModel:
         }
 
         if not results_file:
-            results = Results('{}_results.txt'.format(init_time))
+            results = Results('results.txt')
         else:
-            results = Results('{0}results/{1}.txt'.format(self._logpath, results_file))
+            results = Results('results.txt')
         best_result = results.best()
 
         df_interactions, df_timestamps, df_weights = self.csv_to_df(months=3)
@@ -537,4 +548,5 @@ class SpotlightModel:
 
 if __name__ == "__main__":
     sim = SpotlightModel()
-    sim.run(defaults=True)
+    for _ in range(20):
+        sim.run(defaults=True)
