@@ -274,6 +274,21 @@ class LibSVMParser(DataPrep):
 
     def dummify(self, ret_t):
         df = pd.read_csv(os.path.join(self.dpath, 'libsvm_01_bots.csv'), sep='\t')
+        print(df.shape[0])
+        # user_ids = df.copy()
+        # user_ids = user_ids.drop_duplicates(subset='user_id')
+        # user_ids = user_ids.sample(frac=0.75)
+        # user_ids = user_ids.user_id.tolist()
+        # with open('user_ids.txt', 'w') as f:
+        #     f.write(','.join([str(x) for x in user_ids]))
+        # sys.exit(0)
+        # with open('user_ids.txt') as f:
+        #     user_ids = f.readline()
+        #     user_ids = user_ids.split(',')
+        #     user_ids = [int(x) for x in user_ids]
+        # df = df[~df.user_id.isin(user_ids)]
+        # print(df.shape[0])
+
         cols = list(df)
         cols.insert(0, cols.pop(cols.index('target')))
         df = df[cols]
@@ -304,8 +319,8 @@ class LibSVMParser(DataPrep):
         print(X.shape, y.shape)
 
         return_type = {
-            'df': (df, y.transpose()),
-            'dense': (np.array(X), np.transpose(np.array(y))),
+            # 'df': (df, y.transpose()),
+            # 'dense': (np.array(X), np.transpose(np.array(y))),
             'sparse': (scipy.sparse.csr_matrix(X.values).astype(float), scipy.sparse.csr_matrix(y.values).transpose().astype(float))
         }
         return return_type[ret_t]
@@ -335,9 +350,9 @@ class LibSVMParser(DataPrep):
         raise("Split Error")
 
     def run(self):
-        self.categorise_features()
-        self.df = self.neg_sampling(self.df)
-        self.df.to_csv(os.path.join(self.dpath, 'libsvm_01_bots.csv'), sep='\t', index=False)
+        # self.categorise_features()
+        # self.df = self.neg_sampling(self.df)
+        # self.df.to_csv(os.path.join(self.dpath, 'libsvm_01_bots.csv'), sep='\t', index=False)
         aliases = ['train', 'test']
         dummies = self.dummify('sparse')
         splits = self.split_train_test(dummies, validation=True)
@@ -353,13 +368,13 @@ class LibSVMParser(DataPrep):
 # fmp = LibSVMParser('03_bot_cleaned.csv')
 # fmp.run()
 
-# dp = DataParser('2017_01_0')
-# dp.run()
+dp = DataParser('2017_01_02')
+dp.run()
 # dp = DataParser('2017_07_01')
-# dp.run()
-dc = DataCleaner('01_symbols.csv')
-# # # # # # dc = DataCleaner('02_interactions.csv')
-dc.run(5)
+# # dp.run()
+# dc = DataCleaner('01_symbols.csv')
+# # # # # # # dc = DataCleaner('02_interactions.csv')
+# dc.run(5)
 
-libsvm = LibSVMParser('data.csv')
+libsvm = LibSVMParser('01_symbols.csv')
 libsvm.run()

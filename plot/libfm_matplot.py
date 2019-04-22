@@ -1,43 +1,41 @@
-# Credit: Josh Hemann
-
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator
-from collections import namedtuple
+ 
 
-
-n_groups = 5
-
-means_men = (20, 35, 30, 35, 27)
-std_men = (2, 3, 4, 1, 2)
-
-means_women = (25, 32, 34, 20, 25)
-std_women = (3, 5, 2, 3, 3)
-
+#  libFM+ALS & 0.586 & 1.166 \\
+# libFM+SGD & 0.711 & 0.991 \\
+# libFM+SGDA & 0.694 & 0.898 \\
+# libFM+MCMC & \textbf{0.737} & \textbf{0.867} \\
+# data to plot
+n_groups = 4
+means_frank = (0.586, 0.694, 0.711, 0.737)
+means_guido = (1.166, 0.898, 0.991, 0.867)
+ 
+# create plot
 fig, ax = plt.subplots()
-
 index = np.arange(n_groups)
 bar_width = 0.35
+opacity = 0.7
+ 
+rects1 = plt.bar(index, means_frank, bar_width,
+alpha=opacity,
+color='#914447',
+label='AUC')
+ 
+rects2 = plt.bar(index + bar_width, means_guido, bar_width,
+alpha=opacity,
+color='#888374',
+label='RMSE')
+ 
+plt.ylabel('Scores')
+# plt.xticks(index + bar_width, ('libFM+ALS', 'libFM+SGDA', 'libFM+SGD', 'libFM+MCMC'))
+plt.xticks(range(len(means_frank)),('libFM+ALS', 'libFM+SGDA', 'libFM+SGD', 'libFM+MCMC'), rotation=30)
 
-opacity = 0.4
-error_config = {'ecolor': '0.3'}
+for rect in rects1 + rects2:
+    height = rect.get_height()
+    plt.text(rect.get_x() + rect.get_width()/2.0, height, '%.3f' % float(height), ha='center', va='bottom')
 
-rects1 = ax.bar(index, means_men, bar_width,
-                alpha=opacity, color='b',
-                yerr=std_men, error_kw=error_config,
-                label='Men')
-
-rects2 = ax.bar(index + bar_width, means_women, bar_width,
-                alpha=opacity, color='r',
-                yerr=std_women, error_kw=error_config,
-                label='Women')
-
-ax.set_xlabel('Group')
-ax.set_ylabel('Scores')
-ax.set_title('Scores by group and gender')
-ax.set_xticks(index + bar_width / 2)
-ax.set_xticklabels(('A', 'B', 'C', 'D', 'E'))
-ax.legend()
-
-fig.tight_layout()
+plt.legend()
+ 
+plt.tight_layout()
 plt.show()

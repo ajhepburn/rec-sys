@@ -93,7 +93,12 @@ class BaselineModels:
             df_symbol_features,
             on=['user_id', 'tag_id']
         )
-        df = df.drop_duplicates(subset=['user_id', 'tag_id'])
+        # df = df.drop_duplicates(subset=['user_id', 'tag_id'])
+        # with open(os.path.join(self.rpath[:-8], 'user_ids.txt')) as f:
+        #     user_ids = f.readline()
+        #     user_ids = user_ids.split(',')
+        #     user_ids = [int(x) for x in user_ids]
+        # df = df[~df.user_id.isin(user_ids)]
         return df
 
 class LightFMLib(BaselineModels):
@@ -352,7 +357,8 @@ class LightFMLib(BaselineModels):
             mrr = reciprocal_rank(
                 model=model,
                 test_interactions=test,
-                train_interactions=train
+                train_interactions=train,
+                item_features=item_features
             ).mean()
             logger.info(model_name+' MRR: %s' % (mrr))
 
@@ -571,8 +577,8 @@ class SpotlightMF(BaselineModels):
 lfm_cf = LFMRun()
 spot = SpotlightMF()
 
-for _ in range(10):
-    for filtering in ['cf']:
+for _ in range(5):
+    for filtering in ['cf','hybrid']:
         for loss in ('bpr', 'warp', 'warp-kos'):
             lfm_cf.run(filtering, loss, 3)
         for loss in ('pointwise', 'hinge', 'bpr'):

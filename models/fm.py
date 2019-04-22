@@ -71,7 +71,7 @@ class FactorisationMachines:
         prec = precision_score(self.y_test, y_pred.round(), average='weighted')
         rec = recall_score(self.y_test, y_pred.round(), average='weighted') 
         fmeasure = 2*((prec*rec)/(prec+rec))
-        auc = roc_auc_score(self.y_test, y_pred, average='weighted')
+        auc = roc_auc_score(self.y_test, y_pred, average='macro')
         rmse = np.sqrt(mean_squared_error(self.y_test, y_pred))
         return (auc, rmse)
 
@@ -126,7 +126,7 @@ class FactorisationMachines:
         for handler in logging.root.handlers[:]:
             logging.root.removeHandler(handler)
 
-        for prog in ['libfm', 'fastfm', 'tffm']:
+        for prog in ['libfm']:
             print(prog, getattr(self, prog)())
 
 
